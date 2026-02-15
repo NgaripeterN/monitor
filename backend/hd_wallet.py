@@ -9,8 +9,8 @@ load_dotenv()
 HD_WALLET_MNEMONIC = os.getenv("HD_WALLET_MNEMONIC")
 
 # --- Configuration ---
-# We use account 1 to keep the bot's addresses separate from any personal addresses (which are typically in account 0)
-BIP44_ACCOUNT_INDEX = 1
+# Use account 0, the default for most wallets (e.g., MetaMask, Trust Wallet)
+BIP44_ACCOUNT_INDEX = 0
 
 def get_master_key_from_mnemonic(mnemonic):
     """
@@ -23,10 +23,10 @@ def generate_new_address(address_index):
     """
     Generates a new Ethereum address at a specific index from the master key.
     
-    The derivation path used is m/44'/60'/1'/0/address_index, where:
+    The derivation path used is m/44'/60'/0'/0/address_index, where:
     - 44' is for BIP44
     - 60' is for Ethereum
-    - 1' is the account index (we use 1 to separate from the default account 0)
+    - 0' is the default account index
     - 0 is the change level (external chain)
     - address_index is the sequential index for the address
     """
