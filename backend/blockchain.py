@@ -101,8 +101,8 @@ def check_payment_on_address(chain, address):
 
             # Create a filter for Transfer events to the user's unique address
             transfer_filter = token_contract.events.Transfer.create_filter(
-                fromBlock=from_block,
-                toBlock='latest',
+                from_block=from_block,
+                to_block='latest',
                 argument_filters={'to': checksum_user_address}
             )
 
