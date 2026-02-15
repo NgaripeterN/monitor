@@ -10,6 +10,7 @@ This is a Telegram bot designed to verify USDT and USDC payments across multiple
 *   **Automated Verification:** Users click an "I Have Paid" button to trigger an automatic scan of the blockchain for their payment.
 *   **Secure:** Uses a single master recovery phrase (mnemonic) to control all generated addresses. Your main wallet's funds and addresses are kept separate by using a different account index.
 *   **Persistent:** Uses a PostgreSQL database to track deposit addresses and payment statuses.
+*   **Always-On (Free Tier):** Includes a lightweight web server to work with external uptime monitors, keeping the bot alive on free hosting plans.
 
 ## New User Workflow
 
@@ -73,6 +74,21 @@ python backend/bot.py
 ```
 
 Your bot is now running with support for both USDT and USDC!
+
+## Deployment on Render (Free Tier Workaround)
+
+Render's free "Web Service" tier automatically puts your service to sleep if it doesn't receive any web traffic. To prevent this and keep the bot running 24/7, we have included a tiny web server in the bot. You must use a free "uptime monitor" service to ping your bot every 5-15 minutes.
+
+Here’s how to set it up:
+
+1.  **Deploy your bot** on Render as a **Web Service**. You will get a URL for your service (e.g., `https://your-bot-name.onrender.com`).
+2.  **Sign up for a free uptime monitor service** like [UptimeRobot](https://uptimerobot.com/).
+3.  **Create a new monitor** in UptimeRobot:
+    *   **Monitor Type:** `HTTP(S)`
+    *   **Friendly Name:** Give it any name (e.g., "My Telegram Bot Ping").
+    *   **URL (or IP):** Paste your Render service URL from Step 1.
+    *   **Monitoring Interval:** Set it to `5 minutes`.
+4.  **Save the monitor.** That's it! The service will now ping your bot regularly, keeping it awake and running continuously.
 
 ## License
 

@@ -1,5 +1,6 @@
-python-telegram-bot
-web3
-psycopg2-binary
-python-dotenv
+python-telegram-bot==22.6
+web3==7.14.1
+psycopg2-binary==2.9.11
+python-dotenv==1.2.1
 bip_utils==2.9.0
+Flask==3.0.3

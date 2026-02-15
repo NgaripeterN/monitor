@@ -1,5 +1,7 @@
 import os
 import logging
+import threading
+from flask import Flask
 from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
@@ -24,14 +26,26 @@ logger = logging.getLogger(__name__)
 # --- Environment Variables ---
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_INVITE_LINK = os.getenv("TELEGRAM_INVITE_LINK")
+PORT = int(os.environ.get('PORT', 10000))
 
+# --- Keep-Alive Web Server ---
+app = Flask(__name__)
+@app.route('/')
+def index():
+    return {"status": "ok", "message": "Bot is running"}
+
+def run_web_server():
+    """Runs the Flask web server in a separate thread."""
+    # Disabling Flask's default logs to keep the console clean
+    log = logging.getLogger('werkzeug')
+    log.setLevel(logging.ERROR)
+    app.run(host='0.0.0.0', port=PORT)
 
 # --- Command Handlers ---
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handles the /start command."""
     user_id = update.message.from_user.id
     
-    # Check if the user has already paid
     if has_user_paid(user_id):
         await update.message.reply_text(
             "Welcome back! You already have access. Here is the link just in case:\n"
@@ -39,7 +53,6 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         )
         return
 
-    # If the user hasn't paid, show the welcome message and payment button
     keyboard = [[InlineKeyboardButton("Get Deposit Address", callback_data="create_deposit_address")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
@@ -50,7 +63,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         reply_markup=reply_markup
     )
 
-# --- Callback Handlers for Button Presses ---
+# --- Callback Handlers ---
 async def handle_button_press(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handles all button presses and routes them to the correct function."""
     query = update.callback_query
@@ -60,7 +73,6 @@ async def handle_button_press(update: Update, context: ContextTypes.DEFAULT_TYPE
     callback_data = query.data
 
     if callback_data == "create_deposit_address":
-        await query.edit_message_text(text="Please select the network for your deposit:")
         keyboard = [[InlineKeyboardButton(chain, callback_data=f"deposit_{chain}") for chain in CHAINS.keys()]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_text(text="Please select the network for your deposit:", reply_markup=reply_markup)
@@ -68,13 +80,11 @@ async def handle_button_press(update: Update, context: ContextTypes.DEFAULT_TYPE
     elif callback_data.startswith("deposit_"):
         chain = callback_data.split("_")[1]
         
-        # Check if user already has a pending address for this chain
         pending_deposit = get_pending_deposit_for_user(user_id, chain)
         
         if pending_deposit:
-            address = pending_deposit[3] # (id, user_id, chain, address, ...)
+            address = pending_deposit[3]
         else:
-            # Generate a new address
             next_index = get_next_address_index()
             address = generate_new_address(next_index)
             create_deposit_address(user_id, chain, address, next_index)
@@ -86,7 +96,7 @@ async def handle_button_press(update: Update, context: ContextTypes.DEFAULT_TYPE
         pending_deposit = get_pending_deposit_for_user(user_id, chain)
 
         if not pending_deposit:
-            await query.edit_message_text("Error: Could not find a pending deposit for you. Please try generating an address again.")
+            await query.edit_message_text("Error: Could not find a pending deposit. Please try generating an address again.")
             return
 
         deposit_id, _, _, address, _ = pending_deposit
@@ -125,13 +135,18 @@ async def show_deposit_address(query, chain, address):
         parse_mode='Markdown'
     )
 
-
 # --- Main Bot Function ---
 def main() -> None:
-    """Sets up and runs the Telegram bot."""
-    # Ensure the database and table are created before starting
+    """Sets up and runs the Telegram bot and web server."""
+    # Ensure the database and table are created
     print("Initializing database...")
     create_deposits_table()
+    
+    # Start the Flask web server in a background thread
+    print("Starting keep-alive web server...")
+    web_thread = threading.Thread(target=run_web_server)
+    web_thread.daemon = True
+    web_thread.start()
     
     print("Starting bot...")
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
@@ -140,7 +155,7 @@ def main() -> None:
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CallbackQueryHandler(handle_button_press))
 
-    # Start the bot
+    # Start the bot's polling
     application.run_polling()
     print("Bot stopped.")
 
