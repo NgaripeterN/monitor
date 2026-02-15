@@ -47,6 +47,7 @@ CHAINS = {
 }
 
 MIN_STABLECOIN_AMOUNT = float(os.getenv("MIN_STABLECOIN_AMOUNT", "14.5"))
+MARGIN_OF_ERROR = 0.1  # Allows payments to be slightly less, e.g., 1.9 if min is 2.0
 
 def check_payment_on_address(chain, address):
     """
@@ -65,6 +66,9 @@ def check_payment_on_address(chain, address):
         return None, None, 0
 
     try:
+        # Convert user's deposit address to checksum format
+        checksum_user_address = Web3.to_checksum_address(address)
+
         # Define the block range to scan
         latest_block = w3.eth.block_number
         from_block = latest_block - config["scan_blocks"]
@@ -73,21 +77,26 @@ def check_payment_on_address(chain, address):
         for coin_type, token_address in config["tokens"].items():
             if not token_address:
                 continue # Skip if the token address is not configured
+            
+            # Convert token contract address to checksum format
+            checksum_token_address = Web3.to_checksum_address(token_address)
 
-            token_contract = w3.eth.contract(address=token_address, abi=ERC20_ABI)
+            token_contract = w3.eth.contract(address=checksum_token_address, abi=ERC20_ABI)
             
             try:
                 token_decimals = token_contract.functions.decimals().call()
             except Exception:
                 token_decimals = 6 # Default to 6 if the call fails
 
-            min_amount_in_smallest_unit = int(MIN_STABLECOIN_AMOUNT * (10 ** token_decimals))
+            # Calculate the minimum required amount, factoring in the margin of error
+            required_amount = MIN_STABLECOIN_AMOUNT - MARGIN_OF_ERROR
+            min_amount_in_smallest_unit = int(required_amount * (10 ** token_decimals))
 
             # Create a filter for Transfer events to the user's unique address
             transfer_filter = token_contract.events.Transfer.create_filter(
                 fromBlock=from_block,
                 toBlock='latest',
-                argument_filters={'to': address}
+                argument_filters={'to': checksum_user_address}
             )
 
             # Check all found transfer events for a sufficient amount
