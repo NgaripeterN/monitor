@@ -2,4 +2,4 @@ python-telegram-bot
 web3
 psycopg2-binary
 python-dotenv
-bip_utils
+bip_utils==2.9.0
