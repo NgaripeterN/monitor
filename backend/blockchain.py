@@ -55,15 +55,19 @@ def check_payment_on_address(chain, address):
 
     Returns a tuple: (coin_type, transaction_hash, amount_in_token) if found, otherwise (None, None, 0).
     """
+    print(f"\n[DEBUG] Starting payment check for address {address} on {chain}")
     if chain not in CHAINS:
+        print(f"[DEBUG] ERROR: Unknown chain: {chain}")
         raise ValueError(f"Unknown chain: {chain}")
 
     config = CHAINS[chain]
     w3 = Web3(Web3.HTTPProvider(config["rpc"]))
 
     if not w3.is_connected():
-        print(f"Could not connect to {chain} RPC.")
+        print(f"[DEBUG] ERROR: Could not connect to {chain} RPC at {config['rpc']}.")
         return None, None, 0
+    
+    print("[DEBUG] Web3 connection successful.")
 
     try:
         # Convert user's deposit address to checksum format
@@ -72,11 +76,14 @@ def check_payment_on_address(chain, address):
         # Define the block range to scan
         latest_block = w3.eth.block_number
         from_block = latest_block - config["scan_blocks"]
+        print(f"[DEBUG] Scanning from block {from_block} to {latest_block}.")
 
         # Iterate over each token (USDT, USDC) for the given chain
         for coin_type, token_address in config["tokens"].items():
             if not token_address:
                 continue # Skip if the token address is not configured
+            
+            print(f"[DEBUG] Checking for {coin_type} ({token_address})")
             
             # Convert token contract address to checksum format
             checksum_token_address = Web3.to_checksum_address(token_address)
@@ -99,19 +106,23 @@ def check_payment_on_address(chain, address):
                 argument_filters={'to': checksum_user_address}
             )
 
+            events = transfer_filter.get_all_entries()
+            print(f"[DEBUG] Found {len(events)} '{coin_type}' transfer events to this address.")
+
             # Check all found transfer events for a sufficient amount
-            for event in transfer_filter.get_all_entries():
+            for event in events:
                 if event['args']['value'] >= min_amount_in_smallest_unit:
                     tx_hash = event['transactionHash'].hex()
                     amount_token = event['args']['value'] / (10 ** token_decimals)
-                    print(f"Found payment on {chain}: {amount_token} {coin_type} in tx {tx_hash}")
+                    print(f"[SUCCESS] Found qualifying payment on {chain}: {amount_token} {coin_type} in tx {tx_hash}")
                     return coin_type, tx_hash, amount_token
 
     except Exception as e:
-        print(f"An error occurred while checking payment on {chain} for address {address}: {e}")
+        print(f"[DEBUG] An unexpected error occurred while checking payment on {chain} for address {address}: {e}")
         return None, None, 0
 
     # If no qualifying payment is found for any token
+    print(f"[DEBUG] No qualifying payment found for address {address} on {chain}.")
     return None, None, 0
 
 if __name__ == '__main__':
