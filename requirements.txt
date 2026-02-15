@@ -1,0 +1,5 @@
+python-telegram-bot
+web3
+psycopg2-binary
+python-dotenv
+bip_utils
