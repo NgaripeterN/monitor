@@ -77,6 +77,8 @@ def check_payment_on_address(chain, address):
         latest_block = w3.eth.block_number
         from_block = latest_block - config["scan_blocks"]
         print(f"[DEBUG] Scanning from block {from_block} to {latest_block}.")
+        print(f"[DEBUG] Configured MIN_STABLECOIN_AMOUNT: {MIN_STABLECOIN_AMOUNT}, MARGIN_OF_ERROR: {MARGIN_OF_ERROR}")
+
 
         # Iterate over each token (USDT, USDC) for the given chain
         for coin_type, token_address in config["tokens"].items():
@@ -98,6 +100,8 @@ def check_payment_on_address(chain, address):
             # Calculate the minimum required amount, factoring in the margin of error
             required_amount = MIN_STABLECOIN_AMOUNT - MARGIN_OF_ERROR
             min_amount_in_smallest_unit = int(required_amount * (10 ** token_decimals))
+            print(f"[DEBUG] For {coin_type}: required_amount (with margin) = {required_amount}, min_amount_in_smallest_unit = {min_amount_in_smallest_unit}")
+
 
             # Create a filter for Transfer events to the user's unique address
             transfer_filter = token_contract.events.Transfer.create_filter(
