@@ -27,6 +27,7 @@ def create_deposits_table():
             address VARCHAR(255) UNIQUE NOT NULL,
             address_index INT NOT NULL,
             status VARCHAR(20) NOT NULL DEFAULT 'pending',
+            coin_type VARCHAR(10),
             tx_hash VARCHAR(255),
             amount_received NUMERIC(36, 18),
             created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -109,13 +110,13 @@ def get_pending_deposits():
     conn.close()
     return pending_deposits
 
-def confirm_payment(deposit_id, tx_hash, amount_received):
+def confirm_payment(deposit_id, tx_hash, amount_received, coin_type):
     """Updates a deposit's status to 'paid' and records transaction details."""
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute(
-        "UPDATE deposits SET status = 'paid', tx_hash = %s, amount_received = %s, paid_at = CURRENT_TIMESTAMP WHERE id = %s",
-        (tx_hash, amount_received, deposit_id)
+        "UPDATE deposits SET status = 'paid', tx_hash = %s, amount_received = %s, coin_type = %s, paid_at = CURRENT_TIMESTAMP WHERE id = %s",
+        (tx_hash, amount_received, coin_type, deposit_id)
     )
     conn.commit()
     cur.close()

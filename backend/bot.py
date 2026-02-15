@@ -14,7 +14,7 @@ from backend.database import (
     confirm_payment
 )
 from backend.hd_wallet import generate_new_address
-from backend.blockchain import check_payment_on_address, CHAINS, MIN_USDT_AMOUNT
+from backend.blockchain import check_payment_on_address, CHAINS, MIN_STABLECOIN_AMOUNT
 
 # --- Initial Setup ---
 load_dotenv()
@@ -45,7 +45,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     
     await update.message.reply_text(
         "Welcome to the Payment Bot!\n\n"
-        f"To get your invite link, you need to make a one-time payment of {MIN_USDT_AMOUNT} USDT.\n\n"
+        f"To get your invite link, you need to make a one-time payment of {MIN_STABLECOIN_AMOUNT} USDT or USDC.\n\n"
         "Click the button below to generate your unique deposit address.",
         reply_markup=reply_markup
     )
@@ -92,12 +92,12 @@ async def handle_button_press(update: Update, context: ContextTypes.DEFAULT_TYPE
         deposit_id, _, _, address, _ = pending_deposit
         await query.edit_message_text(f"Scanning {chain} for your payment to {address[:10]}... This may take a moment.")
         
-        tx_hash, amount_paid = check_payment_on_address(chain, address)
+        coin_type, tx_hash, amount_paid = check_payment_on_address(chain, address)
 
         if tx_hash:
-            confirm_payment(deposit_id, tx_hash, amount_paid)
+            confirm_payment(deposit_id, tx_hash, amount_paid, coin_type)
             await query.edit_message_text(
-                "Payment confirmed! Thank you.\n\n"
+                f"Payment of {amount_paid} {coin_type} confirmed! Thank you.\n\n"
                 f"Here is your invite link: {TELEGRAM_INVITE_LINK}"
             )
         else:
@@ -115,10 +115,10 @@ async def show_deposit_address(query, chain, address):
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await query.edit_message_text(
-        f"Please send at least {MIN_USDT_AMOUNT} USDT to the following address on the {chain} network:\n\n"
+        f"Please send at least {MIN_STABLECOIN_AMOUNT} USDT or USDC to the following address on the {chain} network:\n\n"
         f"`{address}`\n\n"
         "**Important:**\n"
-        "- Send only USDT on the {chain} network.\n"
+        f"- Send only USDT or USDC on the {chain} network.\n"
         "- Sending any other token or using a different network will result in the loss of your funds.\n\n"
         "Once your transaction is confirmed on the blockchain, click the button below.",
         reply_markup=reply_markup,
