@@ -4,7 +4,7 @@ import asyncio
 from fastapi import FastAPI, Request
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
 # --- Module Imports ---
@@ -32,7 +32,7 @@ WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 # --- Bot Application Setup ---
 application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
-# --- Command & Callback Handlers (Logic is unchanged) ---
+# --- Command & Callback Handlers ---
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = update.message.from_user.id
     if has_user_paid(user_id):
@@ -95,18 +95,19 @@ async def show_deposit_address(query, chain, address):
         parse_mode="Markdown",
     )
 
-# Add handlers to the application
-application.add_handler(CommandHandler("start", start_command))
-application.add_handler(CallbackQueryHandler(handle_button_press))
-
 # --- FastAPI Application ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # On startup
+    # On startup, initialize database, bot, handlers, and set the webhook
     print("Initializing database...")
     create_deposits_table()
+    
+    application.add_handler(CommandHandler("start", start_command))
+    application.add_handler(CallbackQueryHandler(handle_button_press))
+    
     print("Initializing bot application...")
     await application.initialize()
+    
     if WEBHOOK_URL:
         print(f"Setting webhook to {WEBHOOK_URL}/telegram")
         await application.bot.set_webhook(url=f"{WEBHOOK_URL}/telegram")
@@ -121,9 +122,15 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-@app.get("/")
+@app.get("/", include_in_schema=False)
 async def index():
+    """Endpoint for GET requests (like browser visits)."""
     return {"status": "ok", "message": "Bot is running"}
+
+@app.head("/", include_in_schema=False)
+async def head():
+    """Endpoint for HEAD requests (like UptimeRobot)."""
+    return {"status": "ok"}
 
 @app.post("/telegram")
 async def webhook(request: Request):

@@ -27,7 +27,6 @@ This bot is designed for easy deployment as a **Web Service** on Render.
 *   Enter the following settings:
     *   **Build Command:** `pip install -r requirements.txt`
     *   **Start Command:** `uvicorn backend.bot:app --host 0.0.0.0 --port 10000`
-    *   **Instance Type:** `Free` is sufficient.
 
 ### Step 3: Add Environment Variables
 
