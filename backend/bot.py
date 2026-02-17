@@ -26,24 +26,17 @@ logger = logging.getLogger(__name__)
 # --- Environment Variables ---
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_INVITE_LINK = os.getenv("TELEGRAM_INVITE_LINK")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL") # e.g., https://your-bot-name.onrender.com
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 PORT = int(os.environ.get('PORT', 10000))
 
 # --- Bot Application Setup ---
-# We need to initialize the application and its handlers here
-# so they can be accessed within the Flask routes.
-application = (
-    Application.builder().token(TELEGRAM_BOT_TOKEN).build()
-)
+application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
-# --- Command Handlers ---
+# --- Command & Callback Handlers (Logic is unchanged) ---
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    # (Handler logic is the same as before)
     user_id = update.message.from_user.id
     if has_user_paid(user_id):
-        await update.message.reply_text(
-            f"Welcome back! You already have access. Here is the link:\n{TELEGRAM_INVITE_LINK}"
-        )
+        await update.message.reply_text(f"Welcome back! You already have access.\n{TELEGRAM_INVITE_LINK}")
         return
     keyboard = [[InlineKeyboardButton("Get Deposit Address", callback_data="create_deposit_address")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -53,9 +46,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         reply_markup=reply_markup,
     )
 
-# --- Callback Handlers ---
 async def handle_button_press(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    # (Handler logic is the same as before)
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
@@ -87,19 +78,13 @@ async def handle_button_press(update: Update, context: ContextTypes.DEFAULT_TYPE
         coin_type, tx_hash, amount_paid = check_payment_on_address(chain, address)
         if tx_hash:
             confirm_payment(deposit_id, tx_hash, amount_paid, coin_type)
-            await query.edit_message_text(
-                f"Payment of {amount_paid} {coin_type} confirmed! Thank you.\n\nHere is your link: {TELEGRAM_INVITE_LINK}"
-            )
+            await query.edit_message_text(f"Payment of {amount_paid:.2f} {coin_type} confirmed!\n\nHere is your link: {TELEGRAM_INVITE_LINK}")
         else:
             keyboard = [[InlineKeyboardButton("I Have Paid", callback_data=f"check_{chain}")]]
             reply_markup = InlineKeyboardMarkup(keyboard)
-            await query.edit_message_text(
-                "Payment not detected yet. Please try again in a few minutes.",
-                reply_markup=reply_markup,
-            )
+            await query.edit_message_text("Payment not detected yet. Please try again in a few minutes.", reply_markup=reply_markup)
 
 async def show_deposit_address(query, chain, address):
-    # (Helper function is the same as before)
     keyboard = [[InlineKeyboardButton("I Have Paid", callback_data=f"check_{chain}")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text(
@@ -119,19 +104,21 @@ app = Flask(__name__)
 
 @app.route("/")
 def index():
-    """A simple endpoint to confirm the web server is running."""
     return {"status": "ok", "message": "Bot is running"}
 
 @app.route("/set_webhook")
-def set_webhook():
-    """A one-time endpoint to set the webhook with Telegram."""
+def set_webhook_route():
     if not WEBHOOK_URL:
         return "Error: WEBHOOK_URL environment variable not set", 500
-    
-    # We use asyncio.run because Flask routes are synchronous
-    # but the telegram-bot library functions are asynchronous.
     try:
-        asyncio.run(application.bot.set_webhook(url=f"{WEBHOOK_URL}/telegram"))
+        # We need to run the async set_webhook function
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+             # If a loop is running, create a task to run the coroutine
+             loop.create_task(application.bot.set_webhook(url=f"{WEBHOOK_URL}/telegram"))
+        else:
+             # Otherwise, run it directly
+             asyncio.run(application.bot.set_webhook(url=f"{WEBHOOK_URL}/telegram"))
         return "Webhook set successfully!", 200
     except Exception as e:
         logger.error(f"Error setting webhook: {e}")
@@ -139,19 +126,25 @@ def set_webhook():
 
 @app.route("/telegram", methods=["POST"])
 async def webhook():
-    """This endpoint receives the updates from Telegram."""
     update_data = request.get_json()
     update = Update.de_json(data=update_data, bot=application.bot)
     await application.process_update(update)
     return {"status": "ok"}
 
-# --- Main Entry Point ---
-if __name__ == '__main__':
-    # This part is for local development. 
-    # For Render, gunicorn (or a similar WSGI server) will run the 'app' object.
-    print("Initializing database...")
-    create_deposits_table()
-    
-    # We don't run polling or the dev server here in production.
-    # Render will run the Flask app via a WSGI server like gunicorn.
-    print("Bot is ready. This script is intended to be run by a WSGI server like Gunicorn in production.")
+# --- Main Entry Point for Gunicorn ---
+
+# Initialize the database and bot application when the module is loaded.
+# This will be run by Gunicorn once before it starts serving requests.
+print("Initializing database...")
+create_deposits_table()
+print("Initializing bot application...")
+# Using a try-except block to handle cases where an asyncio loop might already be running
+try:
+    asyncio.run(application.initialize())
+except RuntimeError:
+    # This can happen if an event loop is already running, 
+    # for example in some testing or interactive environments.
+    # We can try to get the existing loop and run it there.
+    loop = asyncio.get_running_loop()
+    loop.create_task(application.initialize())
+print("Initialization complete. Gunicorn can now serve the app.")

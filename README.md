@@ -21,7 +21,7 @@ This is a Telegram bot designed to verify USDT and USDC payments across multiple
 5.  The user returns to the bot and clicks "I Have Paid".
 6.  The bot scans the blockchain, finds the payment, and sends the user the private invite link.
 
-## Setup Instructions
+## Local Development Setup
 
 ### 1. Prerequisites
 
@@ -43,14 +43,7 @@ pip install -r requirements.txt
 
 Create a file named `.env` in the root directory of your project. Copy the contents of `.env.example` into it and fill in your actual credentials.
 
-### 4. Initialize the Database
-
-Run the `database.py` script to create/update the `deposits` table:
-```bash
-python -c "from backend.database import create_deposits_table; create_deposits_table()"
-```
-
-### 5. Running Locally (for Development)
+### 4. Running Locally
 
 To run the bot locally for testing, you will need a tool like `ngrok` to expose your local server to the internet so Telegram can send webhooks to it. The production deployment on Render is easier.
 
@@ -64,7 +57,7 @@ This bot is designed to be deployed as a **Web Service** on Render.
     *   **Branch:** `main`
     *   **Build Command:** 
         ```
-        pip install -r requirements.txt && python -c "from backend.database import create_deposits_table; create_deposits_table()"
+        pip install -r requirements.txt
         ```
     *   **Start Command:** 
         ```
@@ -74,16 +67,17 @@ This bot is designed to be deployed as a **Web Service** on Render.
 
 2.  **Add Environment Variables:**
     *   Go to the **Environment** tab for your new service.
-    *   Add all the required variables from your `.env.example` file (e.g., `TELEGRAM_BOT_TOKEN`, `HD_WALLET_MNEMONIC`, `DATABASE_URL`, all RPC and token contract addresses).
+    *   Add all the required variables from your `.env.example` file.
     *   **Add a new, crucial variable:**
         *   **Name:** `WEBHOOK_URL`
         *   **Value:** Your service's public URL provided by Render (e.g., `https://your-bot-name.onrender.com`).
 
-3.  **Deploy:**
-    *   Click **"Create Web Service"**. Wait for the service to build and deploy.
+3.  **Deploy (Two-Step Process):**
+    *   **First Deploy:** Deploy the service *without* the `WEBHOOK_URL` set. After it's live, copy the public URL Render gives you.
+    *   **Second Deploy:** Go back to the Environment tab, add the `WEBHOOK_URL` variable with the copied URL, and save. This will trigger a final redeploy.
 
 4.  **Set the Webhook (One-Time Setup):**
-    *   After your service is live, take your service URL (e.g., `https://your-bot-name.onrender.com`) and visit the `/set_webhook` endpoint in your browser.
+    *   After your service is live from the second deploy, take your service URL and visit the `/set_webhook` endpoint in your browser.
     *   Go to this URL: **`https://your-bot-name.onrender.com/set_webhook`**
     *   You should see a "Webhook set successfully!" message.
 
