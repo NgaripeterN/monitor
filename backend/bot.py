@@ -108,17 +108,13 @@ def index():
 
 @app.route("/set_webhook")
 def set_webhook_route():
+    """A one-time endpoint to set the webhook with Telegram."""
     if not WEBHOOK_URL:
         return "Error: WEBHOOK_URL environment variable not set", 500
     try:
-        # We need to run the async set_webhook function
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-             # If a loop is running, create a task to run the coroutine
-             loop.create_task(application.bot.set_webhook(url=f"{WEBHOOK_URL}/telegram"))
-        else:
-             # Otherwise, run it directly
-             asyncio.run(application.bot.set_webhook(url=f"{WEBHOOK_URL}/telegram"))
+        # asyncio.run() is the correct modern way to run an async function from a sync context.
+        # It automatically manages the event loop.
+        asyncio.run(application.bot.set_webhook(url=f"{WEBHOOK_URL}/telegram"))
         return "Webhook set successfully!", 200
     except Exception as e:
         logger.error(f"Error setting webhook: {e}")
