@@ -4,13 +4,13 @@ This is a Telegram bot designed to verify USDT and USDC payments across multiple
 
 ## Features
 
+*   **Webhook Driven:** Uses webhooks for instant and reliable message processing. This is the professional standard and avoids the `Conflict` errors common with polling.
 *   **Multi-Coin Support:** Verifies both USDT and USDC payments.
 *   **Multi-chain Support:** Works on Ethereum Mainnet, Polygon, Base, Arbitrum, and BSC.
 *   **Unique Deposit Addresses:** Automatically generates a new, unique payment address for each user.
 *   **Automated Verification:** Users click an "I Have Paid" button to trigger an automatic scan of the blockchain for their payment.
-*   **Secure:** Uses a single master recovery phrase (mnemonic) to control all generated addresses. Your main wallet's funds and addresses are kept separate by using a different account index.
+*   **Secure:** Uses a single master recovery phrase (mnemonic) to control all generated addresses.
 *   **Persistent:** Uses a PostgreSQL database to track deposit addresses and payment statuses.
-*   **Always-On (Free Tier):** Includes a lightweight web server to work with external uptime monitors, keeping the bot alive on free hosting plans.
 
 ## New User Workflow
 
@@ -28,8 +28,8 @@ This is a Telegram bot designed to verify USDT and USDC payments across multiple
 *   Python 3.8+
 *   A PostgreSQL database
 *   A Telegram Bot Token (from BotFather)
-*   The 12 or 24-word secret recovery phrase (mnemonic) from your own crypto wallet. **It is highly recommended to use a new, clean wallet for this bot.**
-*   RPC URLs for Ethereum, Polygon, Base, Arbitrum, and BSC.
+*   The 12 or 24-word secret recovery phrase (mnemonic) from your own crypto wallet.
+*   RPC URLs for all desired chains.
 *   An invite link to your private Telegram group/channel.
 
 ### 2. Install Dependencies
@@ -43,52 +43,51 @@ pip install -r requirements.txt
 
 Create a file named `.env` in the root directory of your project. Copy the contents of `.env.example` into it and fill in your actual credentials.
 
-You must provide your wallet's secret recovery phrase to the `HD_WALLET_MNEMONIC` variable and ensure all RPC and contract address variables are set.
-
-```ini
-# Your wallet's 12 or 24-word secret recovery phrase (mnemonic)
-HD_WALLET_MNEMONIC="word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11 word12"
-
-# Telegram Bot Token, Database URL, RPC URLs, etc.
-TELEGRAM_BOT_TOKEN=YOUR_TELEGRAM_BOT_TOKEN
-DATABASE_URL=postgresql://user:password@host:port/database
-
-# ... (and all the other variables from .env.example, including USDT and USDC addresses)
-```
-
-**CRITICAL SECURITY NOTE:** The `HD_WALLET_MNEMONIC` is the master key to your funds. **Treat it like a password.** Do not share it, do not commit it to Git, and ensure your hosting environment (e.g., Render) is secure.
-
 ### 4. Initialize the Database
 
 Run the `database.py` script to create/update the `deposits` table:
 ```bash
-python backend/database.py
-```
-*(Note: If you are updating from a previous version, you may need to manually add the `coin_type` column to your existing table or drop the table and re-run this script.)*
-
-### 5. Run the Bot
-
-Start the Telegram bot:
-```bash
-python backend/bot.py
+python -c "from backend.database import create_deposits_table; create_deposits_table()"
 ```
 
-Your bot is now running with support for both USDT and USDC!
+### 5. Running Locally (for Development)
 
-## Deployment on Render (Free Tier Workaround)
+To run the bot locally for testing, you will need a tool like `ngrok` to expose your local server to the internet so Telegram can send webhooks to it. The production deployment on Render is easier.
 
-Render's free "Web Service" tier automatically puts your service to sleep if it doesn't receive any web traffic. To prevent this and keep the bot running 24/7, we have included a tiny web server in the bot. You must use a free "uptime monitor" service to ping your bot every 5-15 minutes.
+## Deployment on Render
 
-Here’s how to set it up:
+This bot is designed to be deployed as a **Web Service** on Render.
 
-1.  **Deploy your bot** on Render as a **Web Service**. You will get a URL for your service (e.g., `https://your-bot-name.onrender.com`).
-2.  **Sign up for a free uptime monitor service** like [UptimeRobot](https://uptimerobot.com/).
-3.  **Create a new monitor** in UptimeRobot:
-    *   **Monitor Type:** `HTTP(S)`
-    *   **Friendly Name:** Give it any name (e.g., "My Telegram Bot Ping").
-    *   **URL (or IP):** Paste your Render service URL from Step 1.
-    *   **Monitoring Interval:** Set it to `5 minutes`.
-4.  **Save the monitor.** That's it! The service will now ping your bot regularly, keeping it awake and running continuously.
+1.  **Create the Service:**
+    *   On your Render Dashboard, click **New > Web Service** and connect your GitHub repository.
+    *   **Region:** Choose a region (e.g., `Virginia (US East)`).
+    *   **Branch:** `main`
+    *   **Build Command:** 
+        ```
+        pip install -r requirements.txt && python -c "from backend.database import create_deposits_table; create_deposits_table()"
+        ```
+    *   **Start Command:** 
+        ```
+        gunicorn backend.bot:app
+        ```
+    *   **Instance Type:** `Free` is sufficient to start.
+
+2.  **Add Environment Variables:**
+    *   Go to the **Environment** tab for your new service.
+    *   Add all the required variables from your `.env.example` file (e.g., `TELEGRAM_BOT_TOKEN`, `HD_WALLET_MNEMONIC`, `DATABASE_URL`, all RPC and token contract addresses).
+    *   **Add a new, crucial variable:**
+        *   **Name:** `WEBHOOK_URL`
+        *   **Value:** Your service's public URL provided by Render (e.g., `https://your-bot-name.onrender.com`).
+
+3.  **Deploy:**
+    *   Click **"Create Web Service"**. Wait for the service to build and deploy.
+
+4.  **Set the Webhook (One-Time Setup):**
+    *   After your service is live, take your service URL (e.g., `https://your-bot-name.onrender.com`) and visit the `/set_webhook` endpoint in your browser.
+    *   Go to this URL: **`https://your-bot-name.onrender.com/set_webhook`**
+    *   You should see a "Webhook set successfully!" message.
+
+Your bot is now fully deployed, stable, and will no longer produce `Conflict` errors.
 
 ## License
 
