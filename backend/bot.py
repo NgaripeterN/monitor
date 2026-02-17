@@ -4,7 +4,7 @@ import asyncio
 from fastapi import FastAPI, Request
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
 # --- Module Imports ---
