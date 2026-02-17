@@ -1,11 +1,11 @@
 import os
 import logging
 import asyncio
-from flask import Flask, request
+from fastapi import FastAPI, Request
+from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
-from asgiref.wsgi import WsgiToAsgi
 
 # --- Module Imports ---
 from backend.database import (
@@ -28,7 +28,6 @@ logger = logging.getLogger(__name__)
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_INVITE_LINK = os.getenv("TELEGRAM_INVITE_LINK")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
-PORT = int(os.environ.get('PORT', 10000))
 
 # --- Bot Application Setup ---
 application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
@@ -100,37 +99,36 @@ async def show_deposit_address(query, chain, address):
 application.add_handler(CommandHandler("start", start_command))
 application.add_handler(CallbackQueryHandler(handle_button_press))
 
-# --- Flask Web Server ---
-app = Flask(__name__)
-asgi_app = WsgiToAsgi(app)
+# --- FastAPI Application ---
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # On startup
+    print("Initializing database...")
+    create_deposits_table()
+    print("Initializing bot application...")
+    await application.initialize()
+    if WEBHOOK_URL:
+        print(f"Setting webhook to {WEBHOOK_URL}/telegram")
+        await application.bot.set_webhook(url=f"{WEBHOOK_URL}/telegram")
+    else:
+        print("WEBHOOK_URL not set, skipping webhook setup.")
+    
+    yield
+    
+    # On shutdown
+    print("Shutting down bot application...")
+    await application.shutdown()
 
-@app.route("/")
+app = FastAPI(lifespan=lifespan)
+
+@app.get("/")
 async def index():
     return {"status": "ok", "message": "Bot is running"}
 
-@app.route("/set_webhook")
-async def set_webhook_route():
-    """A one-time endpoint to set the webhook with Telegram."""
-    if not WEBHOOK_URL:
-        return "Error: WEBHOOK_URL environment variable not set", 500
-    try:
-        await application.bot.set_webhook(url=f"{WEBHOOK_URL}/telegram")
-        return "Webhook set successfully!", 200
-    except Exception as e:
-        logger.error(f"Error setting webhook: {e}")
-        return f"Error setting webhook: {e}", 500
-
-@app.route("/telegram", methods=["POST"])
-async def webhook():
-    update_data = request.get_json()
+@app.post("/telegram")
+async def webhook(request: Request):
+    """This endpoint receives the updates from Telegram."""
+    update_data = await request.json()
     update = Update.de_json(data=update_data, bot=application.bot)
     await application.process_update(update)
     return {"status": "ok"}
-
-# --- Main Entry Point for Gunicorn ---
-# Initialize the database and bot application when the module is loaded.
-print("Initializing database...")
-create_deposits_table()
-print("Initializing bot application...")
-asyncio.run(application.initialize())
-print("Initialization complete. Gunicorn can now serve the app.")
