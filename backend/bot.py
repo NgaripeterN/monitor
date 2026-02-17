@@ -73,7 +73,9 @@ async def handle_button_press(update: Update, context: ContextTypes.DEFAULT_TYPE
     callback_data = query.data
 
     if callback_data == "create_deposit_address":
-        keyboard = [[InlineKeyboardButton(chain, callback_data=f"deposit_{chain}") for chain in CHAINS.keys()]]
+        buttons = [InlineKeyboardButton(chain, callback_data=f"deposit_{chain}") for chain in CHAINS.keys()]
+        # Arrange buttons in a 2-column grid
+        keyboard = [buttons[i:i + 2] for i in range(0, len(buttons), 2)]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_text(text="Please select the network for your deposit:", reply_markup=reply_markup)
 

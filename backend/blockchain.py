@@ -44,6 +44,14 @@ CHAINS = {
             "USDC": os.getenv("USDC_CONTRACT_ADDRESS_ARBITRUM"),
         }
     },
+    "BSC": {
+        "rpc": os.getenv("BSC_RPC_URL"),
+        "scan_blocks": 30000, # Approx. 1.5 days
+        "tokens": {
+            "USDT": os.getenv("USDT_CONTRACT_ADDRESS_BSC"),
+            "USDC": os.getenv("USDC_CONTRACT_ADDRESS_BSC"),
+        }
+    },
 }
 
 MIN_STABLECOIN_AMOUNT = float(os.getenv("MIN_STABLECOIN_AMOUNT", "14.5"))

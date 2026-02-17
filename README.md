@@ -5,7 +5,7 @@ This is a Telegram bot designed to verify USDT and USDC payments across multiple
 ## Features
 
 *   **Multi-Coin Support:** Verifies both USDT and USDC payments.
-*   **Multi-chain Support:** Works on Ethereum Mainnet, Polygon, Base, and Arbitrum.
+*   **Multi-chain Support:** Works on Ethereum Mainnet, Polygon, Base, Arbitrum, and BSC.
 *   **Unique Deposit Addresses:** Automatically generates a new, unique payment address for each user.
 *   **Automated Verification:** Users click an "I Have Paid" button to trigger an automatic scan of the blockchain for their payment.
 *   **Secure:** Uses a single master recovery phrase (mnemonic) to control all generated addresses. Your main wallet's funds and addresses are kept separate by using a different account index.
@@ -29,7 +29,7 @@ This is a Telegram bot designed to verify USDT and USDC payments across multiple
 *   A PostgreSQL database
 *   A Telegram Bot Token (from BotFather)
 *   The 12 or 24-word secret recovery phrase (mnemonic) from your own crypto wallet. **It is highly recommended to use a new, clean wallet for this bot.**
-*   RPC URLs for Ethereum, Polygon, Base, and Arbitrum.
+*   RPC URLs for Ethereum, Polygon, Base, Arbitrum, and BSC.
 *   An invite link to your private Telegram group/channel.
 
 ### 2. Install Dependencies
