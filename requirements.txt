@@ -3,5 +3,5 @@ web3==7.14.1
 psycopg2-binary==2.9.11
 python-dotenv==1.2.1
 bip_utils==2.9.0
-Flask==3.0.3
+Flask[async]==3.0.3
 gunicorn==22.0.0
