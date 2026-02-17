@@ -61,7 +61,7 @@ This bot is designed to be deployed as a **Web Service** on Render.
         ```
     *   **Start Command:** 
         ```
-        gunicorn backend.bot:app
+        gunicorn -k uvicorn.workers.UvicornWorker backend.bot:app
         ```
     *   **Instance Type:** `Free` is sufficient to start.
 

@@ -103,20 +103,17 @@ application.add_handler(CallbackQueryHandler(handle_button_press))
 app = Flask(__name__)
 
 @app.route("/")
-def index():
+async def index():
     return {"status": "ok", "message": "Bot is running"}
 
 @app.route("/set_webhook")
-def set_webhook_route():
+async def set_webhook_route():
     """A one-time endpoint to set the webhook with Telegram."""
     if not WEBHOOK_URL:
         return "Error: WEBHOOK_URL environment variable not set", 500
     try:
-        # Get the running event loop that the application is using.
-        loop = asyncio.get_running_loop()
-        # Schedule the async set_webhook function to run on that loop.
-        loop.create_task(application.bot.set_webhook(url=f"{WEBHOOK_URL}/telegram"))
-        return "Webhook set command issued successfully! Check your Render logs for confirmation.", 200
+        await application.bot.set_webhook(url=f"{WEBHOOK_URL}/telegram")
+        return "Webhook set successfully!", 200
     except Exception as e:
         logger.error(f"Error setting webhook: {e}")
         return f"Error setting webhook: {e}", 500
@@ -129,19 +126,9 @@ async def webhook():
     return {"status": "ok"}
 
 # --- Main Entry Point for Gunicorn ---
-
 # Initialize the database and bot application when the module is loaded.
-# This will be run by Gunicorn once before it starts serving requests.
 print("Initializing database...")
 create_deposits_table()
 print("Initializing bot application...")
-# Using a try-except block to handle cases where an asyncio loop might already be running
-try:
-    asyncio.run(application.initialize())
-except RuntimeError:
-    # This can happen if an event loop is already running, 
-    # for example in some testing or interactive environments.
-    # We can try to get the existing loop and run it there.
-    loop = asyncio.get_running_loop()
-    loop.create_task(application.initialize())
+asyncio.run(application.initialize())
 print("Initialization complete. Gunicorn can now serve the app.")
