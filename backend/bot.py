@@ -5,6 +5,7 @@ from flask import Flask, request
 from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
+from asgiref.wsgi import WsgiToAsgi
 
 # --- Module Imports ---
 from backend.database import (
@@ -101,6 +102,7 @@ application.add_handler(CallbackQueryHandler(handle_button_press))
 
 # --- Flask Web Server ---
 app = Flask(__name__)
+asgi_app = WsgiToAsgi(app)
 
 @app.route("/")
 async def index():
