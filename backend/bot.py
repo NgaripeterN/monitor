@@ -112,9 +112,9 @@ def set_webhook_route():
     if not WEBHOOK_URL:
         return "Error: WEBHOOK_URL environment variable not set", 500
     try:
-        # asyncio.run() is the correct modern way to run an async function from a sync context.
-        # It automatically manages the event loop.
-        asyncio.run(application.bot.set_webhook(url=f"{WEBHOOK_URL}/telegram"))
+        # Use the application's own run_until_complete method, which is the
+        # intended way to run a coroutine from a sync context within the application.
+        application.run_until_complete(application.bot.set_webhook(url=f"{WEBHOOK_URL}/telegram"))
         return "Webhook set successfully!", 200
     except Exception as e:
         logger.error(f"Error setting webhook: {e}")
