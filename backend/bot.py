@@ -85,7 +85,10 @@ async def handle_button_press(update: Update, context: ContextTypes.DEFAULT_TYPE
             await query.edit_message_text("Payment not detected yet. Please try again in a few minutes.", reply_markup=reply_markup)
 
 async def show_deposit_address(query, chain, address):
-    keyboard = [[InlineKeyboardButton("I Have Paid", callback_data=f"check_{chain}")]]
+    keyboard = [
+        [InlineKeyboardButton("I Have Paid", callback_data=f"check_{chain}")],
+        [InlineKeyboardButton("⬅️ Back", callback_data="create_deposit_address")]
+    ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text(
         f"Please send at least {MIN_STABLECOIN_AMOUNT} USDT or USDC to the following address on the {chain} network:\n\n`{address}`\n\n"
