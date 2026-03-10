@@ -8,6 +8,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 from bip_utils import Bip39Mnemonic
 
+# --- Module Imports ---
 from backend.database import (
     create_all_tables, add_seller, get_seller_by_telegram_id, set_seller_wallet, get_wallet_by_seller_id,
     add_product, get_seller_products_with_links, get_product_by_id, add_link_to_product, get_product_links,
@@ -68,7 +69,8 @@ async def add_product_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     price_str, *name_parts = context.args
     try:
         product_id = add_product(context.user_data['seller_id'], " ".join(name_parts), float(price_str))
-        await update.message.reply_text(f"✅ Product created with ID: `{product_id}`. Now add links with `/addlink`.", parse_mode="Markdown")
+        await update.message.reply_text(f"✅ Product '{name}' created with ID: `{product_id}`.
+Now add links with: /addlink {product_id} <YourLink>", parse_mode="Markdown")
     except ValueError:
         await update.message.reply_text("❌ Invalid price.")
 
@@ -123,12 +125,16 @@ async def my_products_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 - Buyer Link: `{deep_link}`
 """
         if product['links']:
-            message += "- Links in bundle:\n"
+            message += "- Links in bundle:
+"
             for link_id, link_url in product['links']:
-                message += f"  - `{link_url}` (LinkID: `{link_id}`)\n"
+                message += f"  - `{link_url}` (LinkID: `{link_id}`)
+"
         else:
-            message += "- No links added yet. Use /addlink.\n"
-        message += "\n"
+            message += "- No links added yet. Use /addlink.
+"
+        message += "
+"
     await update.message.reply_text(message, parse_mode="Markdown")
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -142,9 +148,12 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['product_id'] = product[0]
     _, _, name, price, currency, _ = product
     keyboard = [[InlineKeyboardButton("✅ Proceed to Payment", callback_data="show_chains")]]
-    await update.message.reply_text(f"Welcome! You are paying for **{name}**.
+    await update.message.reply_text(
+        f"""Welcome! You are paying for **{name}**.
 
-Amount: **${float(price):.2f}** in {currency} or USDC.", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+Amount: **${float(price):.2f}** in {currency} or USDC.""",
+        reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown"
+    )
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query; await query.answer()
@@ -156,7 +165,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not product: return await query.edit_message_text("This product is no longer available.")
     prod_id, seller_id, name, price, currency, is_active = product
 
-    if callback_data == "show_chains":
+    if callback_data == "show_chains" or callback_data == "back_to_chains":
         buttons = [InlineKeyboardButton(chain, callback_data=f"deposit_{chain}") for chain in RPC_URLS if RPC_URLS.get(chain)]
         keyboard = [buttons[i:i + 2] for i in range(0, len(buttons), 2)]
         await query.edit_message_text("Please select the network for your deposit:", reply_markup=InlineKeyboardMarkup(keyboard))
@@ -171,28 +180,35 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         deposit_id = create_deposit_address(product_id, wallet_id, user_id, address, next_index)
         context.user_data['deposit_id'] = deposit_id
         keyboard = [[InlineKeyboardButton("✅ I Have Paid", callback_data=f"check_{chain}")], [InlineKeyboardButton("⬅️ Back", callback_data="show_chains")]]
-        await query.edit_message_text(f"Please send **${float(price):.2f}** (+ gas) to this address on the **{chain}** network:
+        await query.edit_message_text(
+            f"""Please send **${float(price):.2f}** (+ gas) to this address on the **{chain}** network:
 
-`{address}`", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+`{address}`""",
+            reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown"
+        )
 
     elif callback_data.startswith("check_"):
         deposit_id = context.user_data.get('deposit_id')
         if not deposit_id: return await query.edit_message_text("Could not find an active deposit. Please restart.")
-        _, _, wallet_id, deposit_address = get_deposit_by_id(deposit_id)
+        deposit_record = get_deposit_by_id(deposit_id)
+        if not deposit_record: return await query.edit_message_text("Deposit record not found.")
+        
+        _, _, _, deposit_address = deposit_record
         chain = callback_data.split("_")[1]
         await query.edit_message_text(f"⏳ Scanning {chain} for your payment...")
         rpc_url = RPC_URLS.get(chain)
         tokens_to_check = {token: contract.get(chain) for token, contract in TOKEN_CONTRACTS.items() if contract.get(chain)}
         coin_type, tx_hash, amount_paid = check_payment_on_address(chain, rpc_url, deposit_address, float(price), tokens_to_check)
+
         if tx_hash:
             confirm_payment(deposit_id, tx_hash, amount_paid, coin_type)
             links = get_product_links(product_id)
             links_text = "
 ".join(links)
-            await query.edit_message_text(f"✅ Payment of {amount_paid:.2f} {coin_type} confirmed!
+            await query.edit_message_text(f"""✅ Payment of {amount_paid:.2f} {coin_type} confirmed!
 
 Your link(s):
-{links_text}")
+{links_text}""")
         else:
             keyboard = [[InlineKeyboardButton("I Have Paid", callback_data=f"check_{chain}")], [InlineKeyboardButton("⬅️ Back", callback_data="show_chains")]]
             await query.edit_message_text("Payment not detected yet. Please try again in a few minutes.", reply_markup=InlineKeyboardMarkup(keyboard))
@@ -201,6 +217,7 @@ Your link(s):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     create_all_tables()
+    # Register all handlers
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("register", register_command))
     application.add_handler(CommandHandler("setwallet", set_wallet_command))
