@@ -1,55 +1,74 @@
-# Crypto Payment Verification Telegram Bot
+# Crypto Payment Bot (SaaS Platform)
 
-This bot verifies USDT/USDC payments on multiple chains using a webhook-driven architecture with FastAPI and HD wallets.
+This is a multi-tenant platform that allows multiple "sellers" to use a single bot to verify crypto payments for their products. Each seller sets up their own wallet and can create "product bundles" containing one or more invite links, which are sold for a set price.
+
+The system is built on a robust, asynchronous architecture using FastAPI and webhooks.
 
 ## Features
 
-*   **Webhook Driven:** Uses FastAPI and webhooks for instant, reliable, and production-ready message processing.
-*   **Multi-Coin Support:** Verifies both USDT and USDC payments.
-*   **Multi-chain Support:** Works on Ethereum, Polygon, Base, Arbitrum, and BSC.
-*   **Unique Deposit Addresses:** Automatically generates a new, unique payment address for each user using an HD wallet.
-*   **Automated Setup:** Automatically initializes the database and sets the Telegram webhook on startup.
-*   **Persistent:** Uses a PostgreSQL database to track deposit statuses.
+*   **Multi-Tenant:** Supports multiple, isolated sellers on a single bot instance.
+*   **Seller Self-Service:** Sellers can register and manage their own wallets and products via secure Telegram commands.
+*   **Encrypted Wallets:** Seller recovery phrases are encrypted at rest using a master key.
+*   **Product Bundles:** Sellers can create products containing multiple invite links, delivered to the buyer after a single payment.
+*   **Dynamic Payments:** Buyers use deep links specific to a seller's product, ensuring payments go to the correct seller's wallet.
+*   **Webhook Driven:** Uses FastAPI for instant and reliable message processing.
+*   **Multi-Coin & Multi-chain Support:** Verifies USDT/USDC on configured chains.
 
 ## Deployment on Render
 
-This bot is designed for easy deployment as a **Web Service** on Render.
+Deploy as a **Web Service** on Render.
 
-### Step 1: Create a PostgreSQL Database
+### 1. Generate Your Encryption Key
 
-*   On your Render Dashboard, click **New > PostgreSQL**.
-*   Create a database (the Free plan is fine).
-*   After creation, copy the **Internal Connection String** from the "Info" tab.
+Run this on your **local machine** to generate a secret key for encrypting seller wallets.
+```bash
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+Copy the output. This will be your `DATA_ENCRYPTION_KEY`.
 
-### Step 2: Create the Web Service
+### 2. Deploy on Render
 
-*   On your Render Dashboard, click **New > Web Service** and connect your GitHub repository.
-*   Enter the following settings:
+1.  **Create a PostgreSQL Database** on a provider like Neon and copy the **Connection String**.
+2.  **Create a new Web Service** on Render and connect your GitHub repository.
+3.  **Settings:**
     *   **Build Command:** `pip install -r requirements.txt`
     *   **Start Command:** `uvicorn backend.bot:app --host 0.0.0.0 --port 10000`
+4.  **Environment Variables:** Add all variables from `.env.example`, including your `DATABASE_URL`, `TELEGRAM_BOT_TOKEN`, `ADMIN_TELEGRAM_USER_ID`, and the `DATA_ENCRYPTION_KEY` you just generated.
+5.  **Deploy (Two-Step Process):**
+    1.  Create the service **without** the `WEBHOOK_URL` variable and deploy.
+    2.  After it's live, copy the public URL, add it as the `WEBHOOK_URL` environment variable, and save. This triggers the final deploy. The bot will set its own webhook automatically.
 
-### Step 3: Add Environment Variables
+## How to Use (Seller & Buyer Guide)
 
-Go to the **Environment** tab for your new service and add all the necessary variables.
+### 1. As a New Seller
 
-*   **Crucial Variables:**
-    *   `DATABASE_URL`: Paste the Internal Connection String from your Render database.
-    *   `TELEGRAM_BOT_TOKEN`: Your token from BotFather.
-    *   `HD_WALLET_MNEMONIC`: Your 12 or 24-word secret recovery phrase.
-*   **RPC & Contract Addresses:**
-    *   Add the `_RPC_URL` and `_CONTRACT_ADDRESS_` variables for all the chains you want to support, as defined in `.env.example`.
+*   **Register yourself:**
+    `/register <YourShopName>`
+    *   Example: `/register JohnsVIP`
 
-### Step 4: Deploy
+*   **Set your wallet:** Send your 12 or 24-word phrase from a **new, empty wallet**. The message is **deleted immediately** for security.
+    `/setwallet <word1> <word2> ...`
 
-*   Click **"Create Web Service"**.
-*   On the first deployment, the bot will start, but it won't know its own public URL to set the webhook.
-*   After the first deploy is live, copy the public URL Render gives you (e.g., `https://your-bot-name.onrender.com`).
-*   Go back to the **Environment** tab, add a final variable:
-    *   **Name:** `WEBHOOK_URL`
-    *   **Value:** `https://your-bot-name.onrender.com`
-*   Click **"Save Changes"**. This will trigger a final redeploy.
+*   **Create a product bundle:**
+    `/addproduct <Price> <Product Name>`
+    *   This creates the "bundle" and gives back a `ProductID`.
+    *   Example: `/addproduct 25.00 VIP Access Bundle`
+    *   Bot will reply: `✅ Product 'VIP Access Bundle' created with ID: 1`.
 
-Upon this final deployment, the bot will automatically initialize the database and set its own webhook with Telegram. **There is no need to visit any URL manually.** Your bot is now live and stable.
+*   **Add links to the bundle:** Use the `ProductID` from the previous step.
+    `/addlink <ProductID> <InviteLink>`
+    *   Example: `/addlink 1 https://t.me/group_A`
+    *   Example: `/addlink 1 https://t.me/channel_B`
+
+*   **View your products & get buyer links:**
+    `/myproducts`
+    *   The bot will list all your products and generate the unique `t.me/YourBot?start=<product_id>` deep link for each. Give these links to your buyers.
+
+### 2. As a Buyer
+
+*   The buyer clicks the deep link from the seller (e.g., `...start=1`).
+*   Your bot guides them through the payment process.
+*   Upon successful payment, the bot sends them a message with all the links in the product bundle they purchased.
 
 ## License
 
