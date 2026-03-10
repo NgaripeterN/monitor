@@ -67,10 +67,14 @@ async def set_wallet_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
 async def add_product_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) < 2: return await update.message.reply_text("Usage: /addproduct <Price> <Name...>")
     price_str, *name_parts = context.args
+    product_name = " ".join(name_parts)
     try:
-        product_id = add_product(context.user_data['seller_id'], " ".join(name_parts), float(price_str))
-        await update.message.reply_text(f"✅ Product '{name}' created with ID: `{product_id}`.
-Now add links with: /addlink {product_id} <YourLink>", parse_mode="Markdown")
+        product_id = add_product(context.user_data['seller_id'], product_name, float(price_str))
+        await update.message.reply_text(
+            f"✅ Product '{product_name}' created with ID: `{product_id}`.\n"
+            f"Now add links with: /addlink {product_id} <YourLink>",
+            parse_mode="Markdown"
+        )
     except ValueError:
         await update.message.reply_text("❌ Invalid price.")
 
@@ -116,25 +120,20 @@ async def my_products_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     products = get_seller_products_with_links(context.user_data['seller_id'])
     if not products: return await update.message.reply_text("You have no products.")
     bot_username = (await context.bot.get_me()).username
-    message = """Your products:
-
-"""
+    message = "Your products:\n\n"
     for product in products:
         deep_link = f"https://t.me/{bot_username}?start={product['id']}"
-        message += f"""**{product['name']}** (${float(product['price']):.2f}) - ID: `{product['id']}`
-- Buyer Link: `{deep_link}`
-"""
+        message += (
+            f"**{product['name']}** (${float(product['price']):.2f}) - ID: `{product['id']}`\n"
+            f"- Buyer Link: `{deep_link}`\n"
+        )
         if product['links']:
-            message += "- Links in bundle:
-"
+            message += "- Links in bundle:\n"
             for link_id, link_url in product['links']:
-                message += f"  - `{link_url}` (LinkID: `{link_id}`)
-"
+                message += f"  - `{link_url}` (LinkID: `{link_id}`)\n"
         else:
-            message += "- No links added yet. Use /addlink.
-"
-        message += "
-"
+            message += "- No links added yet. Use /addlink.\n"
+        message += "\n"
     await update.message.reply_text(message, parse_mode="Markdown")
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -144,19 +143,21 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         product = get_product_by_id(int(product_id_str))
         if not product or not product[5]:
             return await update.message.reply_text("This product link is invalid or unavailable.")
-    except (ValueError, IndexError): return await update.message.reply_text("Invalid product link.")
+    except (ValueError, IndexError):
+        return await update.message.reply_text("Invalid product link.")
     context.user_data['product_id'] = product[0]
     _, _, name, price, currency, _ = product
     keyboard = [[InlineKeyboardButton("✅ Proceed to Payment", callback_data="show_chains")]]
     await update.message.reply_text(
-        f"""Welcome! You are paying for **{name}**.
-
-Amount: **${float(price):.2f}** in {currency} or USDC.""",
-        reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown"
+        f"Welcome! You are paying for **{name}**.\n\n"
+        f"Amount: **${float(price):.2f}** in {currency} or USDC.",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown"
     )
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query; await query.answer()
+    query = update.callback_query
+    await query.answer()
     user_id = query.from_user.id
     product_id = context.user_data.get('product_id')
     callback_data = query.data
@@ -169,7 +170,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         buttons = [InlineKeyboardButton(chain, callback_data=f"deposit_{chain}") for chain in RPC_URLS if RPC_URLS.get(chain)]
         keyboard = [buttons[i:i + 2] for i in range(0, len(buttons), 2)]
         await query.edit_message_text("Please select the network for your deposit:", reply_markup=InlineKeyboardMarkup(keyboard))
-    
+
     elif callback_data.startswith("deposit_"):
         chain = callback_data.split("_")[1]
         wallet = get_wallet_by_seller_id(seller_id)
@@ -179,12 +180,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         address = generate_new_address(mnemonic, next_index)
         deposit_id = create_deposit_address(product_id, wallet_id, user_id, address, next_index)
         context.user_data['deposit_id'] = deposit_id
-        keyboard = [[InlineKeyboardButton("✅ I Have Paid", callback_data=f"check_{chain}")], [InlineKeyboardButton("⬅️ Back", callback_data="show_chains")]]
+        keyboard = [
+            [InlineKeyboardButton("✅ I Have Paid", callback_data=f"check_{chain}")],
+            [InlineKeyboardButton("⬅️ Back", callback_data="show_chains")]
+        ]
         await query.edit_message_text(
-            f"""Please send **${float(price):.2f}** (+ gas) to this address on the **{chain}** network:
-
-`{address}`""",
-            reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown"
+            f"Please send **${float(price):.2f}** (+ gas) to this address on the **{chain}** network:\n\n"
+            f"`{address}`",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown"
         )
 
     elif callback_data.startswith("check_"):
@@ -192,7 +196,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not deposit_id: return await query.edit_message_text("Could not find an active deposit. Please restart.")
         deposit_record = get_deposit_by_id(deposit_id)
         if not deposit_record: return await query.edit_message_text("Deposit record not found.")
-        
+
         _, _, _, deposit_address = deposit_record
         chain = callback_data.split("_")[1]
         await query.edit_message_text(f"⏳ Scanning {chain} for your payment...")
@@ -203,21 +207,22 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if tx_hash:
             confirm_payment(deposit_id, tx_hash, amount_paid, coin_type)
             links = get_product_links(product_id)
-            links_text = "
-".join(links)
-            await query.edit_message_text(f"""✅ Payment of {amount_paid:.2f} {coin_type} confirmed!
-
-Your link(s):
-{links_text}""")
+            links_text = "\n".join(links)
+            await query.edit_message_text(
+                f"✅ Payment of {amount_paid:.2f} {coin_type} confirmed!\n\n"
+                f"Your link(s):\n{links_text}"
+            )
         else:
-            keyboard = [[InlineKeyboardButton("I Have Paid", callback_data=f"check_{chain}")], [InlineKeyboardButton("⬅️ Back", callback_data="show_chains")]]
+            keyboard = [
+                [InlineKeyboardButton("I Have Paid", callback_data=f"check_{chain}")],
+                [InlineKeyboardButton("⬅️ Back", callback_data="show_chains")]
+            ]
             await query.edit_message_text("Payment not detected yet. Please try again in a few minutes.", reply_markup=InlineKeyboardMarkup(keyboard))
 
 # --- FastAPI Application ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     create_all_tables()
-    # Register all handlers
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("register", register_command))
     application.add_handler(CommandHandler("setwallet", set_wallet_command))
@@ -227,7 +232,7 @@ async def lifespan(app: FastAPI):
     application.add_handler(CommandHandler("removelink", remove_link_command))
     application.add_handler(CommandHandler("myproducts", my_products_command))
     application.add_handler(CallbackQueryHandler(button_handler))
-    
+
     await application.initialize()
     if WEBHOOK_URL: await application.bot.set_webhook(url=f"{WEBHOOK_URL}/telegram")
     yield
