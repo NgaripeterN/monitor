@@ -119,20 +119,16 @@ async def my_products_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 """
     for product in products:
         deep_link = f"https://t.me/{bot_username}?start={product['id']}"
-        message += f"**{product['name']}** (${float(product['price']):.2f}) - ID: `{product['id']}`
+        message += f"""**{product['name']}** (${float(product['price']):.2f}) - ID: `{product['id']}`
 - Buyer Link: `{deep_link}`
-"
+"""
         if product['links']:
-            message += "- Links in bundle:
-"
+            message += "- Links in bundle:\n"
             for link_id, link_url in product['links']:
-                message += f"  - `{link_url}` (LinkID: `{link_id}`)
-"
+                message += f"  - `{link_url}` (LinkID: `{link_id}`)\n"
         else:
-            message += "- No links added yet. Use /addlink.
-"
-        message += "
-"
+            message += "- No links added yet. Use /addlink.\n"
+        message += "\n"
     await update.message.reply_text(message, parse_mode="Markdown")
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
