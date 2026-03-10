@@ -114,9 +114,9 @@ async def my_products_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     products = get_seller_products_with_links(context.user_data['seller_id'])
     if not products: return await update.message.reply_text("You have no products.")
     bot_username = (await context.bot.get_me()).username
-    message = "Your products:
+    message = """Your products:
 
-"
+"""
     for product in products:
         deep_link = f"https://t.me/{bot_username}?start={product['id']}"
         message += f"**{product['name']}** (${float(product['price']):.2f}) - ID: `{product['id']}`
