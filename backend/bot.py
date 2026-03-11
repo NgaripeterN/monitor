@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
-from bip_utils import Bip39Mnemonic
+from bip_utils import Bip39MnemonicValidator
 
 from backend.database import (
     create_all_tables, add_seller, get_seller_by_telegram_id, set_seller_wallet, get_wallet_by_seller_id,
@@ -79,7 +79,7 @@ async def edit_shop_name_command(update: Update, context: ContextTypes.DEFAULT_T
 async def set_wallet_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     mnemonic = " ".join(context.args)
     await update.message.delete()
-    if len(context.args) not in [12, 24] or not Bip39Mnemonic.IsValid(mnemonic):
+    if len(context.args) not in [12, 24] or not Bip39MnemonicValidator().IsValid(mnemonic):
         return await update.message.reply_text("❌ Invalid recovery phrase. Your message was deleted for security.")
     set_seller_wallet(context.user_data['seller_id'], mnemonic)
     await update.message.reply_text("✅ Wallet set. Your message was deleted.")
@@ -93,7 +93,8 @@ async def add_product_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     try:
         product_id = add_product(context.user_data['seller_id'], product_name, float(price_str))
         await update.message.reply_text(
-            f"✅ Product '{product_name}' created with ID: `{product_id}`.\n"
+            f"✅ Product '{product_name}' created with ID: `{product_id}`.
+"
             f"Now add links with: /addlink {product_id} <YourLink>",
             parse_mode="Markdown"
         )
@@ -146,20 +147,28 @@ async def my_products_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     if not products:
         return await update.message.reply_text("You have no products.")
     bot_username = (await context.bot.get_me()).username
-    message = "Your products:\n\n"
+    message = "Your products:
+
+"
     for product in products:
         deep_link = f"https://t.me/{bot_username}?start={product['id']}"
         message += (
-            f"**{product['name']}** (${float(product['price']):.2f}) - ID: `{product['id']}`\n"
-            f"- Buyer Link: `{deep_link}`\n"
+            f"**{product['name']}** (${float(product['price']):.2f}) - ID: `{product['id']}`
+"
+            f"- Buyer Link: `{deep_link}`
+"
         )
         if product['links']:
-            message += "- Links in bundle:\n"
+            message += "- Links in bundle:
+"
             for link_id, link_url in product['links']:
-                message += f"  - `{link_url}` (LinkID: `{link_id}`)\n"
+                message += f"  - `{link_url}` (LinkID: `{link_id}`)
+"
         else:
-            message += "- No links added yet. Use /addlink.\n"
-        message += "\n"
+            message += "- No links added yet. Use /addlink.
+"
+        message += "
+"
     await update.message.reply_text(message, parse_mode="Markdown")
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -178,7 +187,9 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     _, _, name, price, currency, _ = product
     keyboard = [[InlineKeyboardButton("✅ Proceed to Payment", callback_data="show_chains")]]
     await update.message.reply_text(
-        f"Welcome! You are paying for **{name}**.\n\n"
+        f"Welcome! You are paying for **{name}**.
+
+"
         f"Amount: **${float(price):.2f}** in {currency} or USDC.",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown"
@@ -223,7 +234,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("⬅️ Back", callback_data="show_chains")]
         ]
         await query.edit_message_text(
-            f"Please send **${float(price):.2f}** (+ gas) to this address on the **{chain}** network:\n\n"
+            f"Please send **${float(price):.2f}** (+ gas) to this address on the **{chain}** network:
+
+"
             f"`{address}`",
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="Markdown"
@@ -247,10 +260,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if tx_hash:
             confirm_payment(deposit_id, tx_hash, amount_paid, coin_type)
             links = get_product_links(product_id)
-            links_text = "\n".join(links)
+            links_text = "
+".join(links)
             await query.edit_message_text(
-                f"✅ Payment of {amount_paid:.2f} {coin_type} confirmed!\n\n"
-                f"Your link(s):\n{links_text}"
+                f"✅ Payment of {amount_paid:.2f} {coin_type} confirmed!
+
+"
+                f"Your link(s):
+{links_text}"
             )
         else:
             keyboard = [
