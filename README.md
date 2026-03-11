@@ -9,9 +9,10 @@ The system is built on a robust, asynchronous architecture using FastAPI and web
 *   **Multi-Tenant:** Supports multiple, isolated sellers on a single bot instance.
 *   **Seller Self-Service:** Sellers can register and manage their own wallets and products via secure Telegram commands.
 *   **Encrypted Wallets:** Seller recovery phrases are encrypted at rest using a master key.
-*   **Product Bundles:** Sellers can create products containing multiple links, and edit them with commands.
+*   **Product Bundles:** Sellers can create products containing multiple links and manage them with commands.
 *   **Webhook Driven:** Uses FastAPI for instant and reliable message processing.
 *   **Multi-Coin & Multi-chain Support:** Verifies USDT/USDC on configured chains.
+*   **Command Discovery:** The bot automatically suggests available commands to users in the Telegram interface.
 
 ## Deployment on Render
 
@@ -43,6 +44,7 @@ Copy the output. This will be your `DATA_ENCRYPTION_KEY`.
 
 *   **/register `<YourShopName>`**: Creates your seller account.
 *   **/setwallet `<12-24 word phrase>`**: Securely sets your payment wallet. Use a new, empty wallet. **Your message is deleted immediately.**
+*   **/editshopname `<NewName>`**: Changes your shop name.
 *   **/addproduct `<Price>` `<Product Name>`**: Creates a product bundle and returns a `ProductID`.
 *   **/addlink `<ProductID>` `<Link>`**: Adds a link (e.g., for Dropbox, Telegram) to your product bundle.
 *   **/myproducts**: Lists all your products, their links (with `LinkID`s), and the unique `t.me` link to give to your buyers.
@@ -53,7 +55,7 @@ Copy the output. This will be your `DATA_ENCRYPTION_KEY`.
 
 *   The buyer clicks the deep link from the seller (e.g., `...start=123`).
 *   The bot guides them through the payment process.
-*   Upon successful payment, the bot sends them a message with all the links in the product bundle they purchased.
+*   Upon successful payment, the bot sends them a message with all the links in the product bundle.
 
 ## License
 

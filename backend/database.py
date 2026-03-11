@@ -41,15 +41,24 @@ def add_seller(name, telegram_user_id):
     cur = conn.cursor()
     try:
         cur.execute("INSERT INTO sellers (name, telegram_user_id) VALUES (%s, %s) RETURNING id;", (name, int(telegram_user_id)))
-        seller_id = cur.fetchone()[0]
         conn.commit()
-        return True, f"✅ Seller '{name}' added. You can now use the seller commands."
+        return True, "✅ Seller account created successfully."
     except psycopg2.IntegrityError:
         conn.rollback()
         return False, "❌ This Telegram User ID is already registered."
     finally:
         cur.close()
         conn.close()
+
+def update_seller_name(seller_id, new_name):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("UPDATE sellers SET name = %s WHERE id = %s;", (new_name, seller_id))
+    updated_rows = cur.rowcount
+    conn.commit()
+    cur.close()
+    conn.close()
+    return updated_rows > 0
 
 def get_seller_by_telegram_id(telegram_user_id):
     conn = get_db_connection()
@@ -167,14 +176,55 @@ def delete_product_link(link_id, seller_id):
     return deleted_rows > 0
     
 # --- Deposit Functions ---
-# (These remain the same, so they are omitted for brevity in this diff, but are present in the final file)
-def get_next_address_index(wallet_id): pass
-def create_deposit_address(product_id, wallet_id, telegram_user_id, address, address_index): pass
-def get_pending_deposit_for_user(telegram_user_id, product_id): pass
-def get_deposit_by_id(deposit_id): pass
-def confirm_payment(deposit_id, tx_hash, amount_received, coin_type): pass
+def get_next_address_index(wallet_id: int) -> int:
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT MAX(address_index) FROM deposits WHERE wallet_id = %s;", (wallet_id,))
+    max_index = cur.fetchone()[0]
+    cur.close()
+    conn.close()
+    return (max_index + 1) if max_index is not None else 0
+
+def create_deposit_address(product_id: int, wallet_id: int, telegram_user_id: int, address: str, address_index: int) -> int:
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO deposits (product_id, wallet_id, telegram_user_id, address, address_index) VALUES (%s, %s, %s, %s, %s) RETURNING id;",
+        (product_id, wallet_id, telegram_user_id, address, address_index)
+    )
+    deposit_id = cur.fetchone()[0]
+    conn.commit()
+    cur.close()
+    conn.close()
+    return deposit_id
+
+def get_pending_deposit_for_user(telegram_user_id: int, product_id: int):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT id, address FROM deposits WHERE telegram_user_id = %s AND product_id = %s AND status = 'pending';", (telegram_user_id, product_id))
+    deposit = cur.fetchone()
+    cur.close()
+    conn.close()
+    return deposit
+
+def get_deposit_by_id(deposit_id: int):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT product_id, seller_id, wallet_id, address FROM deposits WHERE id = %s;", (deposit_id,))
+    deposit = cur.fetchone()
+    cur.close()
+    conn.close()
+    return deposit
+
+def confirm_payment(deposit_id: int, tx_hash: str, amount_received: float, coin_type: str):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("UPDATE deposits SET status = 'paid', tx_hash = %s, amount_received = %s, coin_type = %s, paid_at = CURRENT_TIMESTAMP WHERE id = %s;", (tx_hash, amount_received, coin_type, deposit_id))
+    conn.commit()
+    cur.close()
+    conn.close()
 
 if __name__ == '__main__':
-    print("This script is for creating database tables.")
-    # create_all_tables()
-    print("Run create_all_tables() manually if you are sure.")
+    print("Running create_all_tables() to set up the database schema.")
+    create_all_tables()
+    print("Tables created successfully.")

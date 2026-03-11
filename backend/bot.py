@@ -4,16 +4,15 @@ import asyncio
 from fastapi import FastAPI, Request
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 from bip_utils import Bip39Mnemonic
 
-# --- Module Imports ---
 from backend.database import (
     create_all_tables, add_seller, get_seller_by_telegram_id, set_seller_wallet, get_wallet_by_seller_id,
     add_product, get_seller_products_with_links, get_product_by_id, add_link_to_product, get_product_links,
-    update_product_price, delete_product_link, create_deposit_address, get_pending_deposit_for_user,
-    confirm_payment, get_next_address_index, get_deposit_by_id
+    update_product_price, delete_product_link, update_seller_name, create_deposit_address,
+    get_pending_deposit_for_user, confirm_payment, get_next_address_index, get_deposit_by_id
 )
 from backend.hd_wallet import generate_new_address
 from backend.blockchain import check_payment_on_address
@@ -25,7 +24,6 @@ logger = logging.getLogger(__name__)
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
-ADMIN_TELEGRAM_USER_ID = int(os.getenv("ADMIN_TELEGRAM_USER_ID", 0))
 RPC_URLS = { chain: os.getenv(f"{chain}_RPC_URL") for chain in ["ETH", "POLYGON", "BASE", "ARBITRUM", "BSC"] }
 TOKEN_CONTRACTS = {
     "USDT": {"ETH": "0xdac17f958d2ee523a2206206994597c13d831ec7", "POLYGON": "0xc2132d05d31c914a87c6611c10748aeb04b58e8f", "BASE": "0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2", "ARBITRUM": "0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9", "BSC": "0x55d398326f99059ff775485246999027b3197955"},
@@ -34,7 +32,7 @@ TOKEN_CONTRACTS = {
 
 application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
-# --- Auth Decorators ---
+# --- Auth Decorator ---
 def is_seller(func):
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
         seller = get_seller_by_telegram_id(update.message.from_user.id)
@@ -47,12 +45,23 @@ def is_seller(func):
 
 # --- Seller & Public Commands ---
 async def register_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if len(context.args) < 1: return await update.message.reply_text("Usage: /register <YourShopName>")
+    if len(context.args) < 1:
+        return await update.message.reply_text("Usage: /register <YourShopName>")
     name = " ".join(context.args)
     success, message = add_seller(name, update.message.from_user.id)
     await update.message.reply_text(message)
     if success:
         await update.message.reply_text("Next, set your wallet with /setwallet <12 or 24 word phrase>.")
+
+@is_seller
+async def edit_shop_name_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if len(context.args) < 1:
+        return await update.message.reply_text("Usage: /editshopname <NewName>")
+    new_name = " ".join(context.args)
+    if update_seller_name(context.user_data['seller_id'], new_name):
+        await update.message.reply_text("✅ Your shop name has been updated.")
+    else:
+        await update.message.reply_text("❌ There was an error updating your shop name.")
 
 @is_seller
 async def set_wallet_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -65,7 +74,8 @@ async def set_wallet_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 @is_seller
 async def add_product_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if len(context.args) < 2: return await update.message.reply_text("Usage: /addproduct <Price> <Name...>")
+    if len(context.args) < 2:
+        return await update.message.reply_text("Usage: /addproduct <Price> <Name...>")
     price_str, *name_parts = context.args
     product_name = " ".join(name_parts)
     try:
@@ -80,7 +90,8 @@ async def add_product_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 @is_seller
 async def add_link_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if len(context.args) != 2: return await update.message.reply_text("Usage: /addlink <ProductID> <Link>")
+    if len(context.args) != 2:
+        return await update.message.reply_text("Usage: /addlink <ProductID> <Link>")
     product_id_str, link = context.args
     if not (link.startswith("http://") or link.startswith("https://")):
         return await update.message.reply_text("❌ Invalid link format.")
@@ -94,7 +105,8 @@ async def add_link_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @is_seller
 async def edit_price_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if len(context.args) != 2: return await update.message.reply_text("Usage: /editprice <ProductID> <NewPrice>")
+    if len(context.args) != 2:
+        return await update.message.reply_text("Usage: /editprice <ProductID> <NewPrice>")
     product_id_str, new_price_str = context.args
     try:
         if update_product_price(int(product_id_str), context.user_data['seller_id'], float(new_price_str)):
@@ -106,7 +118,8 @@ async def edit_price_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 @is_seller
 async def remove_link_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if len(context.args) != 1: return await update.message.reply_text("Usage: /removelink <LinkID>")
+    if len(context.args) != 1:
+        return await update.message.reply_text("Usage: /removelink <LinkID>")
     try:
         if delete_product_link(int(context.args[0]), context.user_data['seller_id']):
             await update.message.reply_text("✅ Link removed.")
@@ -118,7 +131,8 @@ async def remove_link_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 @is_seller
 async def my_products_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     products = get_seller_products_with_links(context.user_data['seller_id'])
-    if not products: return await update.message.reply_text("You have no products.")
+    if not products:
+        return await update.message.reply_text("You have no products.")
     bot_username = (await context.bot.get_me()).username
     message = "Your products:\n\n"
     for product in products:
@@ -137,7 +151,10 @@ async def my_products_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     await update.message.reply_text(message, parse_mode="Markdown")
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.args: return await update.message.reply_text("Welcome! To become a seller, use /register <YourShopName>. To buy, use a seller's product link.")
+    if not context.args:
+        return await update.message.reply_text(
+            "Welcome! To become a seller, use /register <YourShopName>. To buy, use a seller's product link."
+        )
     product_id_str = context.args[0]
     try:
         product = get_product_by_id(int(product_id_str))
@@ -161,20 +178,29 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = query.from_user.id
     product_id = context.user_data.get('product_id')
     callback_data = query.data
-    if not product_id: return await query.edit_message_text("Your session has expired. Please restart using the seller's link.")
+
+    if not product_id:
+        return await query.edit_message_text("Your session has expired. Please restart using the seller's link.")
+
     product = get_product_by_id(product_id)
-    if not product: return await query.edit_message_text("This product is no longer available.")
+    if not product:
+        return await query.edit_message_text("This product is no longer available.")
+
     prod_id, seller_id, name, price, currency, is_active = product
 
     if callback_data == "show_chains" or callback_data == "back_to_chains":
         buttons = [InlineKeyboardButton(chain, callback_data=f"deposit_{chain}") for chain in RPC_URLS if RPC_URLS.get(chain)]
         keyboard = [buttons[i:i + 2] for i in range(0, len(buttons), 2)]
-        await query.edit_message_text("Please select the network for your deposit:", reply_markup=InlineKeyboardMarkup(keyboard))
+        await query.edit_message_text(
+            "Please select the network for your deposit:",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
 
     elif callback_data.startswith("deposit_"):
         chain = callback_data.split("_")[1]
         wallet = get_wallet_by_seller_id(seller_id)
-        if not wallet: return await query.edit_message_text("Seller has not configured their wallet.")
+        if not wallet:
+            return await query.edit_message_text("Seller has not configured their wallet.")
         wallet_id, mnemonic = wallet["id"], wallet["mnemonic"]
         next_index = get_next_address_index(wallet_id)
         address = generate_new_address(mnemonic, next_index)
@@ -193,9 +219,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif callback_data.startswith("check_"):
         deposit_id = context.user_data.get('deposit_id')
-        if not deposit_id: return await query.edit_message_text("Could not find an active deposit. Please restart.")
+        if not deposit_id:
+            return await query.edit_message_text("Could not find an active deposit. Please restart.")
         deposit_record = get_deposit_by_id(deposit_id)
-        if not deposit_record: return await query.edit_message_text("Deposit record not found.")
+        if not deposit_record:
+            return await query.edit_message_text("Deposit record not found.")
 
         _, _, _, deposit_address = deposit_record
         chain = callback_data.split("_")[1]
@@ -217,12 +245,28 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 [InlineKeyboardButton("I Have Paid", callback_data=f"check_{chain}")],
                 [InlineKeyboardButton("⬅️ Back", callback_data="show_chains")]
             ]
-            await query.edit_message_text("Payment not detected yet. Please try again in a few minutes.", reply_markup=InlineKeyboardMarkup(keyboard))
+            await query.edit_message_text(
+                "Payment not detected yet. Please try again in a few minutes.",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
 
 # --- FastAPI Application ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     create_all_tables()
+
+    commands = [
+        BotCommand("register", "Create your seller account"),
+        BotCommand("myproducts", "List and manage your products"),
+        BotCommand("addproduct", "Create a new product bundle"),
+        BotCommand("addlink", "Add a link to a product"),
+        BotCommand("removelink", "Remove a link from a product"),
+        BotCommand("editprice", "Change a product's price"),
+        BotCommand("editshopname", "Change your shop name"),
+        BotCommand("setwallet", "Set your payment wallet"),
+    ]
+    await application.bot.set_my_commands(commands)
+
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("register", register_command))
     application.add_handler(CommandHandler("setwallet", set_wallet_command))
@@ -231,19 +275,24 @@ async def lifespan(app: FastAPI):
     application.add_handler(CommandHandler("editprice", edit_price_command))
     application.add_handler(CommandHandler("removelink", remove_link_command))
     application.add_handler(CommandHandler("myproducts", my_products_command))
+    application.add_handler(CommandHandler("editshopname", edit_shop_name_command))
     application.add_handler(CallbackQueryHandler(button_handler))
 
     await application.initialize()
-    if WEBHOOK_URL: await application.bot.set_webhook(url=f"{WEBHOOK_URL}/telegram")
+    if WEBHOOK_URL:
+        await application.bot.set_webhook(url=f"{WEBHOOK_URL}/telegram")
     yield
     await application.shutdown()
 
 app = FastAPI(lifespan=lifespan)
 
 @app.get("/", include_in_schema=False)
-async def index(): return {"status": "ok"}
+async def index():
+    return {"status": "ok"}
+
 @app.head("/", include_in_schema=False)
-async def head(): return {"status": "ok"}
+async def head():
+    return {"status": "ok"}
 
 @app.post("/telegram")
 async def webhook(request: Request):
