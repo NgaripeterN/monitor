@@ -51,19 +51,7 @@ async def register_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     success, message = add_seller(name, update.message.from_user.id)
     await update.message.reply_text(message)
     if success:
-        await update.message.reply_text(
-            """Next, you must set the wallet where you will receive payments.
-
-**To do this:**
-1. Create a brand new, empty crypto wallet (e.g., MetaMask, Trust Wallet).
-2. Get the 12 or 24-word secret recovery phrase for that new wallet.
-
-**Then, use the command:**
-`/setwallet <your 12 or 24 word phrase>`
-
-The bot needs this phrase to generate unique deposit addresses for your buyers. For your security, please use a new wallet with no funds. Your message containing the phrase will be deleted immediately after it's encrypted.""",
-            parse_mode="Markdown"
-        )
+        await update.message.reply_text("Next, set your wallet with /setwallet <12 or 24 word phrase>.")
 
 @is_seller
 async def edit_shop_name_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -85,7 +73,6 @@ async def set_wallet_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await update.message.reply_text("✅ Wallet set. Your message was deleted.")
 
 @is_seller
-@is_seller
 async def add_product_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) < 2:
         return await update.message.reply_text("Usage: /addproduct <Price> <Name...>")
@@ -94,8 +81,9 @@ async def add_product_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     try:
         product_id = add_product(context.user_data['seller_id'], product_name, float(price_str))
         await update.message.reply_text(
-            (f"✅ Product '{product_name}' created with ID: `{product_id}`.\n"
-             f"Now add links with: /addlink {product_id} <YourLink>"),
+            f"✅ Product '{product_name}' created with ID: `{product_id}`.
+"
+            f"Now add links with: /addlink {product_id} <YourLink>",
             parse_mode="Markdown"
         )
     except ValueError:
