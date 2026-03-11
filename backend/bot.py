@@ -81,8 +81,7 @@ async def add_product_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     try:
         product_id = add_product(context.user_data['seller_id'], product_name, float(price_str))
         await update.message.reply_text(
-            f"✅ Product '{product_name}' created with ID: `{product_id}`.
-"
+            f"✅ Product '{product_name}' created with ID: `{product_id}`.\n"
             f"Now add links with: /addlink {product_id} <YourLink>",
             parse_mode="Markdown"
         )
@@ -135,28 +134,20 @@ async def my_products_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     if not products:
         return await update.message.reply_text("You have no products.")
     bot_username = (await context.bot.get_me()).username
-    message = "Your products:
-
-"
+    message = "Your products:\n\n"
     for product in products:
         deep_link = f"https://t.me/{bot_username}?start={product['id']}"
         message += (
-            f"**{product['name']}** (${float(product['price']):.2f}) - ID: `{product['id']}`
-"
-            f"- Buyer Link: `{deep_link}`
-"
+            f"**{product['name']}** (${float(product['price']):.2f}) - ID: `{product['id']}`\n"
+            f"- Buyer Link: `{deep_link}`\n"
         )
         if product['links']:
-            message += "- Links in bundle:
-"
+            message += "- Links in bundle:\n"
             for link_id, link_url in product['links']:
-                message += f"  - `{link_url}` (LinkID: `{link_id}`)
-"
+                message += f"  - `{link_url}` (LinkID: `{link_id}`)\n"
         else:
-            message += "- No links added yet. Use /addlink.
-"
-        message += "
-"
+            message += "- No links added yet. Use /addlink.\n"
+        message += "\n"
     await update.message.reply_text(message, parse_mode="Markdown")
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -175,9 +166,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     _, _, name, price, currency, _ = product
     keyboard = [[InlineKeyboardButton("✅ Proceed to Payment", callback_data="show_chains")]]
     await update.message.reply_text(
-        f"Welcome! You are paying for **{name}**.
-
-"
+        f"Welcome! You are paying for **{name}**.\n\n"
         f"Amount: **${float(price):.2f}** in {currency} or USDC.",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown"
@@ -222,9 +211,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("⬅️ Back", callback_data="show_chains")]
         ]
         await query.edit_message_text(
-            f"Please send **${float(price):.2f}** (+ gas) to this address on the **{chain}** network:
-
-"
+            f"Please send **${float(price):.2f}** (+ gas) to this address on the **{chain}** network:\n\n"
             f"`{address}`",
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="Markdown"
@@ -248,14 +235,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if tx_hash:
             confirm_payment(deposit_id, tx_hash, amount_paid, coin_type)
             links = get_product_links(product_id)
-            links_text = "
-".join(links)
+            links_text = "\n".join(links)
             await query.edit_message_text(
-                f"✅ Payment of {amount_paid:.2f} {coin_type} confirmed!
-
-"
-                f"Your link(s):
-{links_text}"
+                f"✅ Payment of {amount_paid:.2f} {coin_type} confirmed!\n\n"
+                f"Your link(s):\n{links_text}"
             )
         else:
             keyboard = [
