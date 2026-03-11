@@ -85,6 +85,7 @@ async def set_wallet_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await update.message.reply_text("✅ Wallet set. Your message was deleted.")
 
 @is_seller
+@is_seller
 async def add_product_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) < 2:
         return await update.message.reply_text("Usage: /addproduct <Price> <Name...>")
@@ -93,9 +94,8 @@ async def add_product_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     try:
         product_id = add_product(context.user_data['seller_id'], product_name, float(price_str))
         await update.message.reply_text(
-            f"✅ Product '{product_name}' created with ID: `{product_id}`.
-"
-            f"Now add links with: /addlink {product_id} <YourLink>",
+            (f"✅ Product '{product_name}' created with ID: `{product_id}`.\n"
+             f"Now add links with: /addlink {product_id} <YourLink>"),
             parse_mode="Markdown"
         )
     except ValueError:
