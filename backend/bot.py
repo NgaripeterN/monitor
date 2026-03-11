@@ -51,7 +51,19 @@ async def register_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     success, message = add_seller(name, update.message.from_user.id)
     await update.message.reply_text(message)
     if success:
-        await update.message.reply_text("Next, set your wallet with /setwallet <12 or 24 word phrase>.")
+        await update.message.reply_text(
+            """Next, you must set the wallet where you will receive payments.
+
+**To do this:**
+1. Create a brand new, empty crypto wallet (e.g., MetaMask, Trust Wallet).
+2. Get the 12 or 24-word secret recovery phrase for that new wallet.
+
+**Then, use the command:**
+`/setwallet <your 12 or 24 word phrase>`
+
+The bot needs this phrase to generate unique deposit addresses for your buyers. For your security, please use a new wallet with no funds. Your message containing the phrase will be deleted immediately after it's encrypted.""",
+            parse_mode="Markdown"
+        )
 
 @is_seller
 async def edit_shop_name_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
