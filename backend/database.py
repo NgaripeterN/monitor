@@ -20,6 +20,14 @@ def encrypt_data(data: str) -> bytes:
     return fernet.encrypt(data.encode())
 
 def decrypt_data(encrypted_data: bytes) -> str:
+    # Ensure the input is bytes
+    if isinstance(encrypted_data, str):
+        if encrypted_data.startswith('\\x'):
+            encrypted_data = bytes.fromhex(encrypted_data[2:])
+        else:
+            # Assuming it's a base64 encoded string if not hex
+            encrypted_data = encrypted_data.encode()
+            
     return fernet.decrypt(encrypted_data).decode()
 
 # --- Table Creation ---
@@ -88,7 +96,15 @@ def get_wallet_by_seller_id(seller_id):
     if wallet:
         wallet_id, encrypted_mnemonic = wallet
         if encrypted_mnemonic:
-            return {"id": wallet_id, "mnemonic": decrypt_data(encrypted_mnemonic)}
+            # The database driver might return a string representation of bytes
+            if isinstance(encrypted_mnemonic, str) and encrypted_mnemonic.startswith('\\x'):
+                data_to_decrypt = bytes.fromhex(encrypted_mnemonic[2:])
+            elif isinstance(encrypted_mnemonic, memoryview):
+                data_to_decrypt = encrypted_mnemonic.tobytes()
+            else:
+                data_to_decrypt = encrypted_mnemonic
+
+            return {"id": wallet_id, "mnemonic": decrypt_data(data_to_decrypt)}
     return None
 
 # --- Product & Link Functions ---
