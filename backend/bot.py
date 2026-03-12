@@ -52,16 +52,15 @@ async def register_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(message)
     if success:
         await update.message.reply_text(
-            """Next, you must set the wallet where you will receive payments.
-
-**To do this:**
-1. Create a brand new, empty crypto wallet (e.g., MetaMask, Trust Wallet).
-2. Get the 12 or 24-word secret recovery phrase for that new wallet.
-
-**Then, use the command:**
-`/setwallet <your 12 or 24 word phrase>`
-
-The bot needs this phrase to generate unique deposit addresses for your buyers. For your security, please use a new wallet with no funds. Your message containing the phrase will be deleted immediately after it's encrypted.""",
+            "✅ Account created!\n\n"
+            "Please follow these steps to set up your first product:\n\n"
+            "**Step 1: Create a Product**\n"
+            "Use the command: `/addproduct <Price> <Name>`\n\n"
+            "**Step 2: Add Links**\n"
+            "After creating a product, use: `/addlink <ProductID> <Link>`\n\n"
+            "**Step 3: Activate Payments**\n"
+            "Use `/setwallet <Your Phrase>` to activate your products. "
+            "You won't receive your shareable buyer links until this is done.",
             parse_mode="Markdown"
         )
 
@@ -188,7 +187,6 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except (ValueError, IndexError):
         return await update.message.reply_text("Invalid product link.")
 
-    # Check if seller's wallet is configured before allowing a buyer to proceed
     _, seller_id, _, _, _, _ = product
     if not get_wallet_by_seller_id(seller_id):
         return await update.message.reply_text("This product is currently inactive because the seller has not configured their payment wallet.")
@@ -204,7 +202,6 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # This function remains the same as it already handles the case where a wallet is not found.
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
@@ -283,7 +280,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
 
 # --- FastAPI Application ---
-# (This section remains unchanged)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     create_all_tables()
