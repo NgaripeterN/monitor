@@ -160,7 +160,7 @@ async def my_products_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 
         if wallet:
             deep_link = f"https://t.me/{bot_username}?start={product['id']}"
-            message += f"- Buyer Link: `{deep_link}`\n"
+            message += f"- Buyer Link: {deep_link}\n"
         else:
             message += "- Buyer Link: [INACTIVE - use /setwallet]\n"
 
