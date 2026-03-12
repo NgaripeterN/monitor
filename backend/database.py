@@ -87,7 +87,8 @@ def get_wallet_by_seller_id(seller_id):
     conn.close()
     if wallet:
         wallet_id, encrypted_mnemonic = wallet
-        return {"id": wallet_id, "mnemonic": decrypt_data(encrypted_mnemonic)}
+        if encrypted_mnemonic:
+            return {"id": wallet_id, "mnemonic": decrypt_data(encrypted_mnemonic)}
     return None
 
 # --- Product & Link Functions ---
