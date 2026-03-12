@@ -51,7 +51,19 @@ async def register_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     success, message = add_seller(name, update.message.from_user.id)
     await update.message.reply_text(message)
     if success:
-        await update.message.reply_text("Next, set your wallet with /setwallet <12 or 24 word phrase>.")
+        await update.message.reply_text(
+            """Next, you must set the wallet where you will receive payments.
+
+**To do this:**
+1. Create a brand new, empty crypto wallet (e.g., MetaMask, Trust Wallet).
+2. Get the 12 or 24-word secret recovery phrase for that new wallet.
+
+**Then, use the command:**
+`/setwallet <your 12 or 24 word phrase>`
+
+The bot needs this phrase to generate unique deposit addresses for your buyers. For your security, please use a new wallet with no funds. Your message containing the phrase will be deleted immediately after it's encrypted.""",
+            parse_mode="Markdown"
+        )
 
 @is_seller
 async def edit_shop_name_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -130,17 +142,29 @@ async def remove_link_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 @is_seller
 async def my_products_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    products = get_seller_products_with_links(context.user_data['seller_id'])
+    seller_id = context.user_data['seller_id']
+    wallet = get_wallet_by_seller_id(seller_id)
+    products = get_seller_products_with_links(seller_id)
+
     if not products:
-        return await update.message.reply_text("You have no products.")
+        return await update.message.reply_text("You have no products. Use /addproduct to create one.")
+
     bot_username = (await context.bot.get_me()).username
     message = "Your products:\n\n"
+
+    if not wallet:
+        message += "⚠️ **WARNING:** You have not set a payment wallet. Your products are inactive.\n"
+        message += "Please use `/setwallet` to activate them and receive your buyer links.\n\n"
+
     for product in products:
-        deep_link = f"https://t.me/{bot_username}?start={product['id']}"
-        message += (
-            f"**{product['name']}** (${float(product['price']):.2f}) - ID: `{product['id']}`\n"
-            f"- Buyer Link: `{deep_link}`\n"
-        )
+        message += f"**{product['name']}** (${float(product['price']):.2f}) - ID: `{product['id']}`\n"
+
+        if wallet:
+            deep_link = f"https://t.me/{bot_username}?start={product['id']}"
+            message += f"- Buyer Link: `{deep_link}`\n"
+        else:
+            message += "- Buyer Link: [INACTIVE - use /setwallet]\n"
+
         if product['links']:
             message += "- Links in bundle:\n"
             for link_id, link_url in product['links']:
@@ -148,6 +172,7 @@ async def my_products_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         else:
             message += "- No links added yet. Use /addlink.\n"
         message += "\n"
+
     await update.message.reply_text(message, parse_mode="Markdown")
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -162,6 +187,12 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return await update.message.reply_text("This product link is invalid or unavailable.")
     except (ValueError, IndexError):
         return await update.message.reply_text("Invalid product link.")
+
+    # Check if seller's wallet is configured before allowing a buyer to proceed
+    _, seller_id, _, _, _, _ = product
+    if not get_wallet_by_seller_id(seller_id):
+        return await update.message.reply_text("This product is currently inactive because the seller has not configured their payment wallet.")
+
     context.user_data['product_id'] = product[0]
     _, _, name, price, currency, _ = product
     keyboard = [[InlineKeyboardButton("✅ Proceed to Payment", callback_data="show_chains")]]
@@ -173,6 +204,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # This function remains the same as it already handles the case where a wallet is not found.
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
@@ -251,6 +283,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
 
 # --- FastAPI Application ---
+# (This section remains unchanged)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     create_all_tables()
