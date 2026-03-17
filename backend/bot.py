@@ -49,20 +49,16 @@ async def register_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await update.message.reply_text("Usage: /register <YourShopName>")
     name = " ".join(context.args)
     success, message = add_seller(name, update.message.from_user.id)
-    await update.message.reply_text(message)
-    if success:
-        await update.message.reply_text(
-            "✅ Account created!\n\n"
-            "Please follow these steps to set up your first product:\n\n"
-            "**Step 1: Create a Product**\n"
-            "Use the command: `/addproduct <Price> <Name>`\n\n"
-            "**Step 2: Add Links**\n"
-            "After creating a product, use: `/addlink <ProductID> <Link>`\n\n"
-            "**Step 3: Activate Payments**\n"
-            "Use `/setwallet <Your Phrase>` to activate your products. "
-            "You won't receive your shareable buyer links until this is done.",
-            parse_mode="Markdown"
-        )
+    if not success:
+        return await update.message.reply_text(message)
+    
+    await update.message.reply_text(
+        "✅ Seller account created successfully!\n\n"
+        "**Step 1: Create a Product**\n"
+        "Use the command: `/addproduct <Price> <Name>`\n"
+        "Example: `/addproduct 19.99 Premium Bundle`",
+        parse_mode="Markdown"
+    )
 
 @is_seller
 async def edit_shop_name_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -81,7 +77,11 @@ async def set_wallet_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if len(context.args) not in [12, 24] or not Bip39MnemonicValidator().IsValid(mnemonic):
         return await update.message.reply_text("❌ Invalid recovery phrase. Your message was deleted for security.")
     set_seller_wallet(context.user_data['seller_id'], mnemonic)
-    await update.message.reply_text("✅ Wallet set. Your message was deleted.")
+    await update.message.reply_text(
+        "✅ Wallet set successfully!\n\n"
+        "Your account is now fully active. Use `/myproducts` to see your shareable buyer links.",
+        parse_mode="Markdown"
+    )
 
 @is_seller
 async def add_product_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -92,8 +92,10 @@ async def add_product_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     try:
         product_id = add_product(context.user_data['seller_id'], product_name, float(price_str))
         await update.message.reply_text(
-            f"✅ Product '{product_name}' created with ID: `{product_id}`.\n"
-            f"Now add links with: /addlink {product_id} <YourLink>",
+            f"✅ Product '{product_name}' created with ID: `{product_id}`.\n\n"
+            "**Step 2: Add Links**\n"
+            f"Use the command: `/addlink {product_id} <Link>`\n"
+            "Example: `/addlink {product_id} https://example.com/file`",
             parse_mode="Markdown"
         )
     except ValueError:
@@ -108,7 +110,13 @@ async def add_link_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await update.message.reply_text("❌ Invalid link format.")
     try:
         if add_link_to_product(int(product_id_str), context.user_data['seller_id'], link):
-            await update.message.reply_text(f"✅ Link added to product {product_id_str}.")
+            await update.message.reply_text(
+                f"✅ Link added to product `{product_id_str}`!\n\n"
+                "You can add more links to this product, or proceed to the final step:\n\n"
+                "**Step 3: Activate Payments**\n"
+                "Use `/setwallet <Your 12/24 word phrase>` to activate your shop and get your shareable buyer links.",
+                parse_mode="Markdown"
+            )
         else:
             await update.message.reply_text("❌ Product not found or you are not the owner.")
     except ValueError:
