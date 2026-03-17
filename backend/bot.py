@@ -101,7 +101,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def register_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) < 1:
-        return await update.message.reply_text("Usage: /register <YourShopName>")
+        return await update.message.reply_text("Usage: /register <YourShopName>\nExample: /register MyDigitalShop")
     name = " ".join(context.args)
     success, message = add_seller(name, update.message.from_user.id)
     if not success:
