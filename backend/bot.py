@@ -71,14 +71,14 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         # General landing page for new users/sellers
         await update.message.reply_text(
-            "Welcome to **AccessBot** — the ultimate crypto payment gateway for digital sellers.\n\n"
+            "Welcome to **AccessBot**, the ultimate crypto payment gateway for digital sellers.\n\n"
             "Sell Telegram invites, Mega links, and digital bundles with automated crypto checkouts.\n\n"
             "🚀 **Key Features:**\n"
             "✅ **Instant Payouts:** Non-custodial system, funds go straight to your wallet.\n"
             "✅ **Multi-chain Support:** Accept USDT/USDC on BSC, Base, Polygon, ETH, and Arbitrum.\n"
             "✅ **Automated Delivery:** Bot delivers links instantly after payment verification.\n"
             "✅ **Privacy First:** Fresh deposit addresses for every customer.\n\n"
-            "Ready to start earning? Use `/register <YourShopName>` to set up your shop.",
+            "Ready to start earning? Use /register <YourShopName> to set up your shop.",
             parse_mode="Markdown"
         )
 
