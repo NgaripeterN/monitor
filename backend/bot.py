@@ -44,6 +44,61 @@ def is_seller(func):
     return wrapper
 
 # --- Seller & Public Commands ---
+async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if context.args:
+        # Handling a buyer who used a product link
+        product_id_str = context.args[0]
+        try:
+            product = get_product_by_id(int(product_id_str))
+            if not product or not product[5]:
+                return await update.message.reply_text("This product link is invalid or unavailable.")
+        except (ValueError, IndexError):
+            return await update.message.reply_text("Invalid product link.")
+
+        _, seller_id, _, _, _, _ = product
+        if not get_wallet_by_seller_id(seller_id):
+            return await update.message.reply_text("This product is currently inactive because the seller has not configured their payment wallet.")
+
+        context.user_data['product_id'] = product[0]
+        _, _, name, price, currency, _ = product
+        keyboard = [[InlineKeyboardButton("✅ Proceed to Payment", callback_data="show_chains")]]
+        await update.message.reply_text(
+            f"Welcome! You are paying for **{name}**.\n\n"
+            f"Amount: **${float(price):.2f}** in {currency} or USDC.",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown"
+        )
+    else:
+        # General landing page for new users/sellers
+        await update.message.reply_text(
+            "Welcome to **AccessBot** — the ultimate crypto payment gateway for digital sellers.\n\n"
+            "Sell Telegram invites, Mega links, and digital bundles with automated crypto checkouts.\n\n"
+            "🚀 **Key Features:**\n"
+            "✅ **Instant Payouts:** Non-custodial system, funds go straight to your wallet.\n"
+            "✅ **Multi-chain Support:** Accept USDT/USDC on BSC, Base, Polygon, ETH, and Arbitrum.\n"
+            "✅ **Automated Delivery:** Bot delivers links instantly after payment verification.\n"
+            "✅ **Privacy First:** Fresh deposit addresses for every customer.\n\n"
+            "Ready to start earning? Use `/register <YourShopName>` to set up your shop.",
+            parse_mode="Markdown"
+        )
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    help_text = (
+        "📚 **AccessBot Help Center**\n\n"
+        "**For Sellers:**\n"
+        "1. `/register <ShopName>` - Create your seller account.\n"
+        "2. `/addproduct <Price> <Name>` - Create a product bundle.\n"
+        "3. `/addlink <ProductID> <Link>` - Add a link to your product.\n"
+        "4. `/setwallet <Phrase>` - Activate payments with your 12/24 word recovery phrase.\n"
+        "5. `/myproducts` - Get your shareable buyer links and manage products.\n\n"
+        "**Additional Commands:**\n"
+        "• `/editshopname <NewName>` - Change your shop's display name.\n"
+        "• `/editprice <ProductID> <NewPrice>` - Update a product's price.\n"
+        "• `/removelink <LinkID>` - Delete a link from a bundle.\n\n"
+        "💡 *Tip: For your security, always use a fresh, empty wallet recovery phrase for `/setwallet`.*"
+    )
+    await update.message.reply_text(help_text, parse_mode="Markdown")
+
 async def register_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) < 1:
         return await update.message.reply_text("Usage: /register <YourShopName>")
@@ -182,33 +237,6 @@ async def my_products_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     await update.message.reply_text(message, parse_mode="Markdown")
 
-async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.args:
-        return await update.message.reply_text(
-            "Welcome! To become a seller, use /register <YourShopName>. To buy, use a seller's product link."
-        )
-    product_id_str = context.args[0]
-    try:
-        product = get_product_by_id(int(product_id_str))
-        if not product or not product[5]:
-            return await update.message.reply_text("This product link is invalid or unavailable.")
-    except (ValueError, IndexError):
-        return await update.message.reply_text("Invalid product link.")
-
-    _, seller_id, _, _, _, _ = product
-    if not get_wallet_by_seller_id(seller_id):
-        return await update.message.reply_text("This product is currently inactive because the seller has not configured their payment wallet.")
-
-    context.user_data['product_id'] = product[0]
-    _, _, name, price, currency, _ = product
-    keyboard = [[InlineKeyboardButton("✅ Proceed to Payment", callback_data="show_chains")]]
-    await update.message.reply_text(
-        f"Welcome! You are paying for **{name}**.\n\n"
-        f"Amount: **${float(price):.2f}** in {currency} or USDC.",
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="Markdown"
-    )
-
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -293,6 +321,8 @@ async def lifespan(app: FastAPI):
     create_all_tables()
 
     commands = [
+        BotCommand("start", "Start the bot or view landing page"),
+        BotCommand("help", "View full command guide"),
         BotCommand("register", "Create your seller account"),
         BotCommand("myproducts", "List and manage your products"),
         BotCommand("addproduct", "Create a new product bundle"),
@@ -305,6 +335,7 @@ async def lifespan(app: FastAPI):
     await application.bot.set_my_commands(commands)
 
     application.add_handler(CommandHandler("start", start_command))
+    application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("register", register_command))
     application.add_handler(CommandHandler("setwallet", set_wallet_command))
     application.add_handler(CommandHandler("addproduct", add_product_command))
