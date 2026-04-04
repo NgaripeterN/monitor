@@ -260,6 +260,15 @@ def get_pending_deposit_for_user(telegram_user_id: int, product_id: int):
     conn.close()
     return deposit
 
+def get_paid_deposit_for_user(telegram_user_id: int, product_id: int):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT id FROM deposits WHERE telegram_user_id = %s AND product_id = %s AND status = 'paid';", (telegram_user_id, product_id))
+    deposit = cur.fetchone()
+    cur.close()
+    conn.close()
+    return deposit
+
 def get_deposit_by_id(deposit_id: int):
     conn = get_db_connection()
     cur = conn.cursor()
