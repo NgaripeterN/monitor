@@ -1,6 +1,7 @@
 import os
 import logging
 import asyncio
+import html
 from fastapi import FastAPI, Request
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
@@ -17,14 +18,11 @@ from backend.database import (
 from backend.hd_wallet import generate_new_address
 from backend.blockchain import check_payment_on_address
 
-def escape_markdown(text):
-    """Helper to escape strings for Telegram's Markdown (V1)."""
+def escape_html(text):
+    """Helper to escape strings for Telegram's HTML parse mode."""
     if not text:
         return ""
-    # Only escape characters that are problematic in V1 outside of code blocks
-    for char in ['_', '*', '`', '[']:
-        text = text.replace(char, f'\\{char}')
-    return text
+    return html.escape(str(text))
 
 # --- Initial Setup & Config ---
 load_dotenv()
@@ -72,41 +70,41 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         _, _, name, price, currency, _ = product
         keyboard = [[InlineKeyboardButton("✅ Proceed to Payment", callback_data="show_chains")]]
         await update.message.reply_text(
-            f"Welcome! You are paying for **{escape_markdown(name)}**.\n\n"
-            f"Amount: **${float(price):.2f}** in {currency} or USDC.",
+            f"Welcome! You are paying for <b>{escape_html(name)}</b>.\n\n"
+            f"Amount: <b>${float(price):.2f}</b> in {currency} or USDC.",
             reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="Markdown"
+            parse_mode="HTML"
         )
     else:
         # General landing page for new users/sellers
         await update.message.reply_text(
-            "Welcome to **AccessBot**, the ultimate crypto payment gateway for digital sellers.\n\n"
+            "Welcome to <b>AccessBot</b>, the ultimate crypto payment gateway for digital sellers.\n\n"
             "Sell Telegram invites, Mega links, and digital bundles with automated crypto checkouts.\n\n"
-            "🚀 **Key Features:**\n"
-            "✅ **Instant Payouts:** Non-custodial system, funds go straight to your wallet.\n"
-            "✅ **Multi-chain Support:** Accept USDT/USDC on BSC, Base, Polygon, ETH, and Arbitrum.\n"
-            "✅ **Automated Delivery:** Bot delivers links instantly after payment verification.\n"
-            "✅ **Privacy First:** Fresh deposit addresses for every customer.\n\n"
-            "Ready to start earning? Use /register <YourShopName> to set up your shop.",
-            parse_mode="Markdown"
+            "🚀 <b>Key Features:</b>\n"
+            "✅ <b>Instant Payouts:</b> Non-custodial system, funds go straight to your wallet.\n"
+            "✅ <b>Multi-chain Support:</b> Accept USDT/USDC on BSC, Base, Polygon, ETH, and Arbitrum.\n"
+            "✅ <b>Automated Delivery:</b> Bot delivers links instantly after payment verification.\n"
+            "✅ <b>Privacy First:</b> Fresh deposit addresses for every customer.\n\n"
+            "Ready to start earning? Use /register &lt;YourShopName&gt; to set up your shop.",
+            parse_mode="HTML"
         )
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = (
-        "📚 **AccessBot Help Center**\n\n"
-        "**For Sellers:**\n"
-        "1. `/register <ShopName>` - Create your seller account.\n"
-        "2. `/addproduct <Price> <Name>` - Create a product bundle.\n"
-        "3. `/addlink <ProductID> <Link>` - Add a link to your product.\n"
-        "4. `/setwallet <Phrase>` - Activate payments with your 12/24 word recovery phrase.\n"
-        "5. `/myproducts` - Get your shareable buyer links and manage products.\n\n"
-        "**Additional Commands:**\n"
-        "• `/editshopname <NewName>` - Change your shop's display name.\n"
-        "• `/editprice <ProductID> <NewPrice>` - Update a product's price.\n"
-        "• `/removelink <LinkID>` - Delete a link from a bundle.\n\n"
-        "💡 *Tip: For your security, always use a fresh, empty wallet recovery phrase for `/setwallet`.*"
+        "📚 <b>AccessBot Help Center</b>\n\n"
+        "<b>For Sellers:</b>\n"
+        "1. <code>/register &lt;ShopName&gt;</code> - Create your seller account.\n"
+        "2. <code>/addproduct &lt;Price&gt; &lt;Name&gt;</code> - Create a product bundle.\n"
+        "3. <code>/addlink &lt;ProductID&gt; &lt;Link&gt;</code> - Add a link to your product.\n"
+        "4. <code>/setwallet &lt;Phrase&gt;</code> - Activate payments with your 12/24 word recovery phrase.\n"
+        "5. <code>/myproducts</code> - Get your shareable buyer links and manage products.\n\n"
+        "<b>Additional Commands:</b>\n"
+        "• <code>/editshopname &lt;NewName&gt;</code> - Change your shop's display name.\n"
+        "• <code>/editprice &lt;ProductID&gt; &lt;NewPrice&gt;</code> - Update a product's price.\n"
+        "• <code>/removelink &lt;LinkID&gt;</code> - Delete a link from a bundle.\n\n"
+        "💡 <i>Tip: For your security, always use a fresh, empty wallet recovery phrase for /setwallet.</i>"
     )
-    await update.message.reply_text(help_text, parse_mode="Markdown")
+    await update.message.reply_text(help_text, parse_mode="HTML")
 
 async def register_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) < 1:
@@ -118,10 +116,10 @@ async def register_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(
         "✅ Seller account created successfully!\n\n"
-        "**Step 1: Create a Product**\n"
-        "Use the command: `/addproduct <Price> <Name>`\n"
-        "Example: `/addproduct 19.99 Premium Bundle`",
-        parse_mode="Markdown"
+        "<b>Step 1: Create a Product</b>\n"
+        "Use the command: <code>/addproduct &lt;Price&gt; &lt;Name&gt;</code>\n"
+        "Example: <code>/addproduct 19.99 Premium Bundle</code>",
+        parse_mode="HTML"
     )
 
 @is_seller
@@ -143,8 +141,8 @@ async def set_wallet_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     set_seller_wallet(context.user_data['seller_id'], mnemonic)
     await update.message.reply_text(
         "✅ Wallet set successfully!\n\n"
-        "Your account is now fully active. Use `/myproducts` to see your shareable buyer links.",
-        parse_mode="Markdown"
+        "Your account is now fully active. Use <code>/myproducts</code> to see your shareable buyer links.",
+        parse_mode="HTML"
     )
 
 @is_seller
@@ -156,11 +154,11 @@ async def add_product_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     try:
         product_id = add_product(context.user_data['seller_id'], product_name, float(price_str))
         await update.message.reply_text(
-            f"✅ Product '{escape_markdown(product_name)}' created with ID: `{product_id}`.\n\n"
-            "**Step 2: Add Links**\n"
-            f"Use the command: `/addlink {product_id} <Link>`\n"
-            "Example: `/addlink {product_id} https://example.com/file`",
-            parse_mode="Markdown"
+            f"✅ Product '<b>{escape_html(product_name)}</b>' created with ID: <code>{product_id}</code>.\n\n"
+            "<b>Step 2: Add Links</b>\n"
+            f"Use the command: <code>/addlink {product_id} &lt;Link&gt;</code>\n"
+            "Example: <code>/addlink {product_id} https://example.com/file</code>",
+            parse_mode="HTML"
         )
     except ValueError:
         await update.message.reply_text("❌ Invalid price.")
@@ -175,11 +173,11 @@ async def add_link_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         if add_link_to_product(int(product_id_str), context.user_data['seller_id'], link):
             await update.message.reply_text(
-                f"✅ Link added to product `{product_id_str}`!\n\n"
+                f"✅ Link added to product <code>{product_id_str}</code>!\n\n"
                 "You can add more links to this product, or proceed to the final step:\n\n"
-                "**Step 3: Activate Payments**\n"
-                "Use `/setwallet <Your 12/24 word phrase>` to activate your shop and get your shareable buyer links.",
-                parse_mode="Markdown"
+                "<b>Step 3: Activate Payments</b>\n"
+                "Use <code>/setwallet &lt;Phrase&gt;</code> to activate your shop and get your shareable buyer links.",
+                parse_mode="HTML"
             )
         else:
             await update.message.reply_text("❌ Product not found or you are not the owner.")
@@ -224,11 +222,11 @@ async def my_products_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     message = "Your products:\n\n"
 
     if not wallet:
-        message += "⚠️ **WARNING:** You have not set a payment wallet. Your products are inactive.\n"
-        message += "Please use `/setwallet` to activate them and receive your buyer links.\n\n"
+        message += "⚠️ <b>WARNING:</b> You have not set a payment wallet. Your products are inactive.\n"
+        message += "Please use <code>/setwallet</code> to activate them and receive your buyer links.\n\n"
 
     for product in products:
-        message += f"**{escape_markdown(product['name'])}** (${float(product['price']):.2f}) - ID: `{product['id']}`\n"
+        message += f"<b>{escape_html(product['name'])}</b> (${float(product['price']):.2f}) - ID: <code>{product['id']}</code>\n"
 
         if wallet:
             deep_link = f"https://t.me/{bot_username}?start={product['id']}"
@@ -239,12 +237,12 @@ async def my_products_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         if product['links']:
             message += "- Links in bundle:\n"
             for link_id, link_url in product['links']:
-                message += f"  - `{link_url}` (LinkID: `{link_id}`)\n"
+                message += f"  - <code>{escape_html(link_url)}</code> (LinkID: <code>{link_id}</code>)\n"
         else:
             message += "- No links added yet. Use /addlink.\n"
         message += "\n"
 
-    await update.message.reply_text(message, parse_mode="Markdown")
+    await update.message.reply_text(message, parse_mode="HTML")
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -285,10 +283,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("⬅️ Back", callback_data="show_chains")]
         ]
         await query.edit_message_text(
-            f"Please send **${float(price):.2f}** (+ gas) to this address on the **{chain}** network:\n\n"
-            f"`{address}`",
+            f"Please send <b>${float(price):.2f}</b> (+ gas) to this address on the <b>{chain}</b> network:\n\n"
+            f"<code>{address}</code>",
             reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="Markdown"
+            parse_mode="HTML"
         )
 
     elif callback_data.startswith("check_"):
