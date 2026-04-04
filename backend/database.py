@@ -55,9 +55,10 @@ def create_all_tables():
         );
     """)
     
-    # Robust column checking for Postgres
+    # List of columns to ensure exist in 'deposits'
     columns_to_check = [
         ("product_id", "INT REFERENCES products(id)"),
+        ("telegram_user_id", "BIGINT"),
         ("wallet_id", "INT REFERENCES wallets(id)"),
         ("seller_id", "INT REFERENCES sellers(id)")
     ]
@@ -70,15 +71,11 @@ def create_all_tables():
             AND table_name = 'deposits' 
             AND column_name = %s;
         """, (col_name,))
-        
+
         if not cur.fetchone():
             print(f"Migration: Adding missing column {col_name} to deposits table...")
-            # Add as nullable first to avoid errors if table has data
             cur.execute(f"ALTER TABLE deposits ADD COLUMN {col_name} {col_def};")
-            
-            # If it's product_id, it really should be NOT NULL, but let's be safe 
-            # and only enforce it if we're sure it won't break an existing table with data
-            # For now, keeping it nullable is safer for automated migrations
+
 
     conn.commit()
     cur.close()
