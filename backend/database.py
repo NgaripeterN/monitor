@@ -58,14 +58,13 @@ def create_all_tables():
     # List of columns to ensure exist in 'deposits'
     columns_to_check = [
         ("product_id", "INT REFERENCES products(id)"),
-        ("telegram_user_id", "BIGINT"),
-        ("user_id", "BIGINT"),
         ("wallet_id", "INT REFERENCES wallets(id)"),
-        ("seller_id", "INT REFERENCES sellers(id)")
+        ("seller_id", "INT REFERENCES sellers(id)"),
+        ("chain", "VARCHAR(50)"),
+        ("user_id", "BIGINT")
     ]
 
     for col_name, col_def in columns_to_check:
-        # Check if column exists in the 'public' schema for 'deposits' table
         cur.execute("""
             SELECT 1 FROM information_schema.columns 
             WHERE table_schema = 'public' 
@@ -76,7 +75,6 @@ def create_all_tables():
         if not cur.fetchone():
             print(f"Migration: Adding missing column {col_name} to deposits table...")
             cur.execute(f"ALTER TABLE deposits ADD COLUMN {col_name} {col_def};")
-
 
     conn.commit()
     cur.close()
@@ -135,7 +133,6 @@ def get_wallet_by_seller_id(seller_id):
     if wallet:
         wallet_id, encrypted_mnemonic = wallet
         if encrypted_mnemonic:
-            # The database driver might return a string representation of bytes
             if isinstance(encrypted_mnemonic, str) and encrypted_mnemonic.startswith('\\x'):
                 data_to_decrypt = bytes.fromhex(encrypted_mnemonic[2:])
             elif isinstance(encrypted_mnemonic, memoryview):
@@ -171,7 +168,6 @@ def add_link_to_product(product_id, seller_id, invite_link):
 def get_seller_products_with_links(seller_id):
     conn = get_db_connection()
     cur = conn.cursor()
-    # Get all products for the seller
     cur.execute("SELECT id, name, price FROM products WHERE seller_id = %s AND is_active = TRUE ORDER BY created_at DESC", (seller_id,))
     products = cur.fetchall()
     
@@ -217,7 +213,6 @@ def update_product_price(product_id, seller_id, new_price):
 def delete_product_link(link_id, seller_id):
     conn = get_db_connection()
     cur = conn.cursor()
-    # Ensure the link belongs to a product owned by the seller before deleting
     cur.execute("""
         DELETE FROM product_links pl
         WHERE pl.id = %s AND EXISTS (
@@ -241,13 +236,14 @@ def get_next_address_index(wallet_id: int) -> int:
     conn.close()
     return (max_index + 1) if max_index is not None else 0
 
-def create_deposit_address(product_id: int, wallet_id: int, telegram_user_id: int, address: str, address_index: int, seller_id: int) -> int:
+def create_deposit_address(product_id: int, wallet_id: int, telegram_user_id: int, address: str, address_index: int, seller_id: int, chain: str) -> int:
     conn = get_db_connection()
     cur = conn.cursor()
-    # We include both 'user_id' and 'telegram_user_id' to be compatible with different schema versions
+    # We include both 'user_id' and 'telegram_user_id' for compatibility, and now 'chain'
     cur.execute(
-        "INSERT INTO deposits (product_id, wallet_id, telegram_user_id, user_id, address, address_index, seller_id) VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id;",
-        (product_id, wallet_id, telegram_user_id, telegram_user_id, address, address_index, seller_id)
+        """INSERT INTO deposits (product_id, wallet_id, telegram_user_id, user_id, address, address_index, seller_id, chain) 
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id;""",
+        (product_id, wallet_id, telegram_user_id, telegram_user_id, address, address_index, seller_id, chain)
     )
     deposit_id = cur.fetchone()[0]
     conn.commit()
