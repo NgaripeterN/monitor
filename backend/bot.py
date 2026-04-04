@@ -273,10 +273,25 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         wallet = get_wallet_by_seller_id(seller_id)
         if not wallet:
             return await query.edit_message_text("Seller has not configured their wallet.")
+        
         wallet_id, mnemonic = wallet["id"], wallet["mnemonic"]
-        next_index = get_next_address_index(wallet_id)
-        address = generate_new_address(mnemonic, next_index)
-        deposit_id = create_deposit_address(product_id, wallet_id, user_id, address, next_index, seller_id)
+        
+        # Check if this user already has a pending deposit for this product
+        existing_deposit = get_pending_deposit_for_user(user_id, product_id)
+        
+        if existing_deposit:
+            deposit_id, address = existing_deposit
+        else:
+            # Generate a new unique address
+            next_index = get_next_address_index(wallet_id)
+            address = generate_new_address(mnemonic, next_index)
+            try:
+                deposit_id = create_deposit_address(product_id, wallet_id, user_id, address, next_index, seller_id)
+            except Exception as e:
+                # Handle potential race condition if another process took the index
+                logger.error(f"Error creating deposit: {e}")
+                return await query.edit_message_text("An error occurred. Please try again.")
+
         context.user_data['deposit_id'] = deposit_id
         keyboard = [
             [InlineKeyboardButton("✅ I Have Paid", callback_data=f"check_{chain}")],
