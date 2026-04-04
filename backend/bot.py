@@ -17,6 +17,15 @@ from backend.database import (
 from backend.hd_wallet import generate_new_address
 from backend.blockchain import check_payment_on_address
 
+def escape_markdown(text):
+    """Helper to escape strings for Telegram's Markdown (V1)."""
+    if not text:
+        return ""
+    # Only escape characters that are problematic in V1 outside of code blocks
+    for char in ['_', '*', '`', '[']:
+        text = text.replace(char, f'\\{char}')
+    return text
+
 # --- Initial Setup & Config ---
 load_dotenv()
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -63,7 +72,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         _, _, name, price, currency, _ = product
         keyboard = [[InlineKeyboardButton("✅ Proceed to Payment", callback_data="show_chains")]]
         await update.message.reply_text(
-            f"Welcome! You are paying for **{name}**.\n\n"
+            f"Welcome! You are paying for **{escape_markdown(name)}**.\n\n"
             f"Amount: **${float(price):.2f}** in {currency} or USDC.",
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="Markdown"
@@ -147,7 +156,7 @@ async def add_product_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     try:
         product_id = add_product(context.user_data['seller_id'], product_name, float(price_str))
         await update.message.reply_text(
-            f"✅ Product '{product_name}' created with ID: `{product_id}`.\n\n"
+            f"✅ Product '{escape_markdown(product_name)}' created with ID: `{product_id}`.\n\n"
             "**Step 2: Add Links**\n"
             f"Use the command: `/addlink {product_id} <Link>`\n"
             "Example: `/addlink {product_id} https://example.com/file`",
@@ -219,7 +228,7 @@ async def my_products_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         message += "Please use `/setwallet` to activate them and receive your buyer links.\n\n"
 
     for product in products:
-        message += f"**{product['name']}** (${float(product['price']):.2f}) - ID: `{product['id']}`\n"
+        message += f"**{escape_markdown(product['name'])}** (${float(product['price']):.2f}) - ID: `{product['id']}`\n"
 
         if wallet:
             deep_link = f"https://t.me/{bot_username}?start={product['id']}"
