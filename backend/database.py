@@ -59,6 +59,7 @@ def create_all_tables():
     columns_to_check = [
         ("product_id", "INT REFERENCES products(id)"),
         ("telegram_user_id", "BIGINT"),
+        ("user_id", "BIGINT"),
         ("wallet_id", "INT REFERENCES wallets(id)"),
         ("seller_id", "INT REFERENCES sellers(id)")
     ]
@@ -243,9 +244,10 @@ def get_next_address_index(wallet_id: int) -> int:
 def create_deposit_address(product_id: int, wallet_id: int, telegram_user_id: int, address: str, address_index: int, seller_id: int) -> int:
     conn = get_db_connection()
     cur = conn.cursor()
+    # We include both 'user_id' and 'telegram_user_id' to be compatible with different schema versions
     cur.execute(
-        "INSERT INTO deposits (product_id, wallet_id, telegram_user_id, address, address_index, seller_id) VALUES (%s, %s, %s, %s, %s, %s) RETURNING id;",
-        (product_id, wallet_id, telegram_user_id, address, address_index, seller_id)
+        "INSERT INTO deposits (product_id, wallet_id, telegram_user_id, user_id, address, address_index, seller_id) VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id;",
+        (product_id, wallet_id, telegram_user_id, telegram_user_id, address, address_index, seller_id)
     )
     deposit_id = cur.fetchone()[0]
     conn.commit()
