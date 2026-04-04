@@ -276,7 +276,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         wallet_id, mnemonic = wallet["id"], wallet["mnemonic"]
         next_index = get_next_address_index(wallet_id)
         address = generate_new_address(mnemonic, next_index)
-        deposit_id = create_deposit_address(product_id, wallet_id, user_id, address, next_index)
+        deposit_id = create_deposit_address(product_id, wallet_id, user_id, address, next_index, seller_id)
         context.user_data['deposit_id'] = deposit_id
         keyboard = [
             [InlineKeyboardButton("✅ I Have Paid", callback_data=f"check_{chain}")],

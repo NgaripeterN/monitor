@@ -38,7 +38,34 @@ def create_all_tables():
     cur.execute("CREATE TABLE IF NOT EXISTS wallets (id SERIAL PRIMARY KEY, seller_id INT UNIQUE NOT NULL REFERENCES sellers(id) ON DELETE CASCADE, encrypted_mnemonic BYTEA NOT NULL, created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP);")
     cur.execute("CREATE TABLE IF NOT EXISTS products (id SERIAL PRIMARY KEY, seller_id INT NOT NULL REFERENCES sellers(id) ON DELETE CASCADE, name VARCHAR(255) NOT NULL, price NUMERIC(10, 2) NOT NULL, currency VARCHAR(10) NOT NULL DEFAULT 'USDT', is_active BOOLEAN DEFAULT TRUE, created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP);")
     cur.execute("CREATE TABLE IF NOT EXISTS product_links (id SERIAL PRIMARY KEY, product_id INT NOT NULL REFERENCES products(id) ON DELETE CASCADE, invite_link TEXT NOT NULL);")
-    cur.execute("CREATE TABLE IF NOT EXISTS deposits (id SERIAL PRIMARY KEY, product_id INT NOT NULL REFERENCES products(id), wallet_id INT NOT NULL REFERENCES wallets(id), telegram_user_id BIGINT NOT NULL, address VARCHAR(255) UNIQUE NOT NULL, address_index INT NOT NULL, status VARCHAR(20) NOT NULL DEFAULT 'pending', coin_type VARCHAR(10), tx_hash VARCHAR(255), amount_received NUMERIC(36, 18), created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP, paid_at TIMESTAMP WITH TIME ZONE);")
+    
+    # Base deposits table
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS deposits (
+            id SERIAL PRIMARY KEY, 
+            product_id INT NOT NULL REFERENCES products(id), 
+            telegram_user_id BIGINT NOT NULL, 
+            address VARCHAR(255) UNIQUE NOT NULL, 
+            address_index INT NOT NULL, 
+            status VARCHAR(20) NOT NULL DEFAULT 'pending', 
+            coin_type VARCHAR(10), 
+            tx_hash VARCHAR(255), 
+            amount_received NUMERIC(36, 18), 
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP, 
+            paid_at TIMESTAMP WITH TIME ZONE
+        );
+    """)
+    
+    # Ensure wallet_id exists
+    cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name='deposits' AND column_name='wallet_id';")
+    if not cur.fetchone():
+        cur.execute("ALTER TABLE deposits ADD COLUMN wallet_id INT REFERENCES wallets(id);")
+
+    # Ensure seller_id exists
+    cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name='deposits' AND column_name='seller_id';")
+    if not cur.fetchone():
+        cur.execute("ALTER TABLE deposits ADD COLUMN seller_id INT REFERENCES sellers(id);")
+
     conn.commit()
     cur.close()
     conn.close()
@@ -202,12 +229,12 @@ def get_next_address_index(wallet_id: int) -> int:
     conn.close()
     return (max_index + 1) if max_index is not None else 0
 
-def create_deposit_address(product_id: int, wallet_id: int, telegram_user_id: int, address: str, address_index: int) -> int:
+def create_deposit_address(product_id: int, wallet_id: int, telegram_user_id: int, address: str, address_index: int, seller_id: int) -> int:
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute(
-        "INSERT INTO deposits (product_id, wallet_id, telegram_user_id, address, address_index) VALUES (%s, %s, %s, %s, %s) RETURNING id;",
-        (product_id, wallet_id, telegram_user_id, address, address_index)
+        "INSERT INTO deposits (product_id, wallet_id, telegram_user_id, address, address_index, seller_id) VALUES (%s, %s, %s, %s, %s, %s) RETURNING id;",
+        (product_id, wallet_id, telegram_user_id, address, address_index, seller_id)
     )
     deposit_id = cur.fetchone()[0]
     conn.commit()
