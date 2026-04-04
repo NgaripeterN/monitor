@@ -251,10 +251,13 @@ def create_deposit_address(product_id: int, wallet_id: int, telegram_user_id: in
     conn.close()
     return deposit_id
 
-def get_pending_deposit_for_user(telegram_user_id: int, product_id: int):
+def get_pending_deposit_for_user(telegram_user_id: int, product_id: int, chain: str = None):
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("SELECT id, address FROM deposits WHERE telegram_user_id = %s AND product_id = %s AND status = 'pending';", (telegram_user_id, product_id))
+    if chain:
+        cur.execute("SELECT id, address FROM deposits WHERE (telegram_user_id = %s OR user_id = %s) AND product_id = %s AND chain = %s AND status = 'pending';", (telegram_user_id, telegram_user_id, product_id, chain))
+    else:
+        cur.execute("SELECT id, address FROM deposits WHERE (telegram_user_id = %s OR user_id = %s) AND product_id = %s AND status = 'pending';", (telegram_user_id, telegram_user_id, product_id))
     deposit = cur.fetchone()
     cur.close()
     conn.close()
@@ -263,7 +266,7 @@ def get_pending_deposit_for_user(telegram_user_id: int, product_id: int):
 def get_paid_deposit_for_user(telegram_user_id: int, product_id: int):
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("SELECT id FROM deposits WHERE telegram_user_id = %s AND product_id = %s AND status = 'paid';", (telegram_user_id, product_id))
+    cur.execute("SELECT id FROM deposits WHERE (telegram_user_id = %s OR user_id = %s) AND product_id = %s AND status = 'paid';", (telegram_user_id, telegram_user_id, product_id))
     deposit = cur.fetchone()
     cur.close()
     conn.close()

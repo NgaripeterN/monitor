@@ -276,8 +276,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         wallet_id, mnemonic = wallet["id"], wallet["mnemonic"]
         
-        # Check if this user already has a pending deposit for this product
-        existing_deposit = get_pending_deposit_for_user(user_id, product_id)
+        # Check if this user already has a pending deposit for this product on this chain
+        existing_deposit = get_pending_deposit_for_user(user_id, product_id, chain)
         
         if existing_deposit:
             deposit_id, address = existing_deposit
