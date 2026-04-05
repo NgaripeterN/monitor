@@ -88,7 +88,7 @@ def create_all_tables():
                 ALTER TABLE deposits DROP CONSTRAINT deposits_user_id_chain_status_key;
             END IF;
             
-            # Also drop variants if they exist
+            -- Also drop variants if they exist
             IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'deposits_telegram_user_id_chain_status_key') THEN
                 ALTER TABLE deposits DROP CONSTRAINT deposits_telegram_user_id_chain_status_key;
             END IF;
