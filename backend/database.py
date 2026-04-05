@@ -58,7 +58,6 @@ def create_all_tables():
     """)
     
     # List of columns to ensure exist in 'deposits'
-    # We make them NULLABLE here to prevent migration crashes, but logic will provide values
     columns_to_check = [
         ("product_id", "INT REFERENCES products(id)"),
         ("wallet_id", "INT REFERENCES wallets(id)"),
@@ -79,6 +78,34 @@ def create_all_tables():
         if not cur.fetchone():
             print(f"Migration: Adding missing column {col_name} to deposits table...")
             cur.execute(f"ALTER TABLE deposits ADD COLUMN {col_name} {col_def};")
+
+    # Fix the unique constraint to include product_id
+    # First, try to drop the old one if it exists
+    cur.execute("""
+        DO $$
+        BEGIN
+            IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'deposits_user_id_chain_status_key') THEN
+                ALTER TABLE deposits DROP CONSTRAINT deposits_user_id_chain_status_key;
+            END IF;
+            
+            # Also drop variants if they exist
+            IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'deposits_telegram_user_id_chain_status_key') THEN
+                ALTER TABLE deposits DROP CONSTRAINT deposits_telegram_user_id_chain_status_key;
+            END IF;
+        END $$;
+    """)
+    
+    # Add the new, more flexible unique constraint
+    # This allows a user to have one pending deposit per product per chain
+    cur.execute("""
+        DO $$
+        BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'deposits_user_product_chain_pending_key') THEN
+                ALTER TABLE deposits ADD CONSTRAINT deposits_user_product_chain_pending_key 
+                UNIQUE (telegram_user_id, product_id, chain, status);
+            END IF;
+        END $$;
+    """)
 
     conn.commit()
     cur.close()
