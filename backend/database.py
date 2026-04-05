@@ -30,20 +30,22 @@ def decrypt_data(encrypted_data: bytes) -> str:
             
     return fernet.decrypt(encrypted_data).decode()
 
-# --- Table Creation ---
+# --- Table Creation & Migrations ---
 def create_all_tables():
     conn = get_db_connection()
     cur = conn.cursor()
+    
+    # Core tables
     cur.execute("CREATE TABLE IF NOT EXISTS sellers (id SERIAL PRIMARY KEY, telegram_user_id BIGINT UNIQUE NOT NULL, name VARCHAR(255) NOT NULL, created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP);")
     cur.execute("CREATE TABLE IF NOT EXISTS wallets (id SERIAL PRIMARY KEY, seller_id INT UNIQUE NOT NULL REFERENCES sellers(id) ON DELETE CASCADE, encrypted_mnemonic BYTEA NOT NULL, created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP);")
     cur.execute("CREATE TABLE IF NOT EXISTS products (id SERIAL PRIMARY KEY, seller_id INT NOT NULL REFERENCES sellers(id) ON DELETE CASCADE, name VARCHAR(255) NOT NULL, price NUMERIC(10, 2) NOT NULL, currency VARCHAR(10) NOT NULL DEFAULT 'USDT', is_active BOOLEAN DEFAULT TRUE, created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP);")
     cur.execute("CREATE TABLE IF NOT EXISTS product_links (id SERIAL PRIMARY KEY, product_id INT NOT NULL REFERENCES products(id) ON DELETE CASCADE, invite_link TEXT NOT NULL);")
     
-    # Ensure deposits table exists with basic columns
+    # Deposits table - ensure it exists with core columns
     cur.execute("""
         CREATE TABLE IF NOT EXISTS deposits (
             id SERIAL PRIMARY KEY, 
-            telegram_user_id BIGINT NOT NULL, 
+            telegram_user_id BIGINT, 
             address VARCHAR(255) UNIQUE NOT NULL, 
             address_index INT NOT NULL, 
             status VARCHAR(20) NOT NULL DEFAULT 'pending', 
@@ -56,12 +58,14 @@ def create_all_tables():
     """)
     
     # List of columns to ensure exist in 'deposits'
+    # We make them NULLABLE here to prevent migration crashes, but logic will provide values
     columns_to_check = [
         ("product_id", "INT REFERENCES products(id)"),
         ("wallet_id", "INT REFERENCES wallets(id)"),
         ("seller_id", "INT REFERENCES sellers(id)"),
         ("chain", "VARCHAR(50)"),
-        ("user_id", "BIGINT")
+        ("user_id", "BIGINT"),
+        ("telegram_user_id", "BIGINT")
     ]
 
     for col_name, col_def in columns_to_check:
@@ -230,6 +234,7 @@ def delete_product_link(link_id, seller_id):
 def get_next_address_index(wallet_id: int) -> int:
     conn = get_db_connection()
     cur = conn.cursor()
+    # We use a broad check to find the max index ever used for this wallet
     cur.execute("SELECT MAX(address_index) FROM deposits WHERE wallet_id = %s;", (wallet_id,))
     max_index = cur.fetchone()[0]
     cur.close()
@@ -239,7 +244,7 @@ def get_next_address_index(wallet_id: int) -> int:
 def create_deposit_address(product_id: int, wallet_id: int, telegram_user_id: int, address: str, address_index: int, seller_id: int, chain: str) -> int:
     conn = get_db_connection()
     cur = conn.cursor()
-    # We include both 'user_id' and 'telegram_user_id' for compatibility, and now 'chain'
+    # We populate both 'telegram_user_id' and the redundant 'user_id' to satisfy all schema variants
     cur.execute(
         """INSERT INTO deposits (product_id, wallet_id, telegram_user_id, user_id, address, address_index, seller_id, chain) 
            VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id;""",
@@ -251,22 +256,16 @@ def create_deposit_address(product_id: int, wallet_id: int, telegram_user_id: in
     conn.close()
     return deposit_id
 
-def get_pending_deposit_for_user(telegram_user_id: int, product_id: int, chain: str = None):
+def get_pending_deposit_for_user(telegram_user_id: int, product_id: int):
     conn = get_db_connection()
     cur = conn.cursor()
-    if chain:
-        cur.execute("SELECT id, address FROM deposits WHERE (telegram_user_id = %s OR user_id = %s) AND product_id = %s AND chain = %s AND status = 'pending';", (telegram_user_id, telegram_user_id, product_id, chain))
-    else:
-        cur.execute("SELECT id, address FROM deposits WHERE (telegram_user_id = %s OR user_id = %s) AND product_id = %s AND status = 'pending';", (telegram_user_id, telegram_user_id, product_id))
-    deposit = cur.fetchone()
-    cur.close()
-    conn.close()
-    return deposit
-
-def get_paid_deposit_for_user(telegram_user_id: int, product_id: int):
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute("SELECT id FROM deposits WHERE (telegram_user_id = %s OR user_id = %s) AND product_id = %s AND status = 'paid';", (telegram_user_id, telegram_user_id, product_id))
+    # Check both potential ID columns just in case
+    cur.execute("""
+        SELECT id, address FROM deposits 
+        WHERE (telegram_user_id = %s OR user_id = %s) 
+        AND product_id = %s 
+        AND status = 'pending';
+    """, (telegram_user_id, telegram_user_id, product_id))
     deposit = cur.fetchone()
     cur.close()
     conn.close()
@@ -275,6 +274,7 @@ def get_paid_deposit_for_user(telegram_user_id: int, product_id: int):
 def get_deposit_by_id(deposit_id: int):
     conn = get_db_connection()
     cur = conn.cursor()
+    # Explicitly name columns to avoid order issues
     cur.execute("SELECT product_id, seller_id, wallet_id, address FROM deposits WHERE id = %s;", (deposit_id,))
     deposit = cur.fetchone()
     cur.close()
