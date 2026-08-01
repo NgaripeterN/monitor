@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
+from telegram.error import Forbidden, TelegramError
 from bip_utils import Bip39MnemonicValidator
 
 from backend.database import (
@@ -39,12 +40,29 @@ TOKEN_CONTRACTS = {
 
 application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Log the error and handle specific telegram errors like Forbidden gracefully."""
+    if isinstance(context.error, Forbidden):
+        user_id = update.effective_user.id if (update and getattr(update, "effective_user", None)) else "unknown"
+        logger.warning("Telegram request failed: Bot was blocked by user (ID: %s).", user_id)
+    elif isinstance(context.error, TelegramError):
+        logger.warning("Telegram API error: %s", context.error)
+    else:
+        logger.error("Exception while handling an update:", exc_info=context.error)
+
 # --- Auth Decorator ---
 def is_seller(func):
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        seller = get_seller_by_telegram_id(update.message.from_user.id)
+        user = update.effective_user
+        message = update.effective_message
+        if not user or not message:
+            return
+        seller = get_seller_by_telegram_id(user.id)
         if not seller:
-            await update.message.reply_text("You are not a registered seller. Use /register to sign up.")
+            try:
+                await message.reply_text("You are not a registered seller. Use /register to sign up.")
+            except Forbidden:
+                logger.warning("Cannot reply to user %s: bot was blocked.", user.id)
             return
         context.user_data['seller_id'] = seller[0]
         return await func(update, context)
@@ -52,24 +70,27 @@ def is_seller(func):
 
 # --- Seller & Public Commands ---
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.effective_message
+    if not msg:
+        return
     if context.args:
         # Handling a buyer who used a product link
         product_id_str = context.args[0]
         try:
             product = get_product_by_id(int(product_id_str))
             if not product or not product[5]:
-                return await update.message.reply_text("This product link is invalid or unavailable.")
+                return await msg.reply_text("This product link is invalid or unavailable.")
         except (ValueError, IndexError):
-            return await update.message.reply_text("Invalid product link.")
+            return await msg.reply_text("Invalid product link.")
 
         _, seller_id, _, _, _, _ = product
         if not get_wallet_by_seller_id(seller_id):
-            return await update.message.reply_text("This product is currently inactive because the seller has not configured their payment wallet.")
+            return await msg.reply_text("This product is currently inactive because the seller has not configured their payment wallet.")
 
         context.user_data['product_id'] = product[0]
         _, _, name, price, currency, _ = product
         keyboard = [[InlineKeyboardButton("✅ Proceed to Payment", callback_data="show_chains")]]
-        await update.message.reply_text(
+        await msg.reply_text(
             f"Welcome! You are paying for <b>{escape_html(name)}</b>.\n\n"
             f"Amount: <b>${float(price):.2f}</b> in {currency} or USDC.",
             reply_markup=InlineKeyboardMarkup(keyboard),
@@ -77,7 +98,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     else:
         # General landing page for new users/sellers
-        await update.message.reply_text(
+        await msg.reply_text(
             "Welcome to <b>AccessBot</b>, the ultimate crypto payment gateway for digital sellers.\n\n"
             "Sell Telegram invites, Mega links, and digital bundles with automated crypto checkouts.\n\n"
             "🚀 <b>Key Features:</b>\n"
@@ -90,6 +111,9 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.effective_message
+    if not msg:
+        return
     help_text = (
         "📚 <b>AccessBot Help Center</b>\n\n"
         "<b>For Sellers:</b>\n"
@@ -104,17 +128,21 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• <code>/removelink &lt;LinkID&gt;</code> - Delete a link from a bundle.\n\n"
         "💡 <i>Tip: For your security, always use a fresh, empty wallet recovery phrase for /setwallet.</i>"
     )
-    await update.message.reply_text(help_text, parse_mode="HTML")
+    await msg.reply_text(help_text, parse_mode="HTML")
 
 async def register_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.effective_message
+    user = update.effective_user
+    if not msg or not user:
+        return
     if len(context.args) < 1:
-        return await update.message.reply_text("Usage: /register <YourShopName>\nExample: /register MyDigitalShop")
+        return await msg.reply_text("Usage: /register <YourShopName>\nExample: /register MyDigitalShop")
     name = " ".join(context.args)
-    success, message = add_seller(name, update.message.from_user.id)
+    success, message = add_seller(name, user.id)
     if not success:
-        return await update.message.reply_text(message)
+        return await msg.reply_text(message)
     
-    await update.message.reply_text(
+    await msg.reply_text(
         "✅ Seller account created successfully!\n\n"
         "<b>Step 1: Create a Product</b>\n"
         "Use the command: <code>/addproduct &lt;Price&gt; &lt;Name&gt;</code>\n"
@@ -124,22 +152,52 @@ async def register_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @is_seller
 async def edit_shop_name_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.effective_message
+    if not msg:
+        return
     if len(context.args) < 1:
-        return await update.message.reply_text("Usage: /editshopname <NewName>")
+        return await msg.reply_text("Usage: /editshopname <NewName>")
     new_name = " ".join(context.args)
     if update_seller_name(context.user_data['seller_id'], new_name):
-        await update.message.reply_text("✅ Your shop name has been updated.")
+        await msg.reply_text("✅ Your shop name has been updated.")
     else:
-        await update.message.reply_text("❌ There was an error updating your shop name.")
+        await msg.reply_text("❌ There was an error updating your shop name.")
 
 @is_seller
 async def set_wallet_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.effective_message
+    if not msg:
+        return
+
+    if len(context.args) == 0:
+        return await msg.reply_text(
+            "🔑 <b>How to set your payment wallet:</b>\n\n"
+            "Use the command: <code>/setwallet &lt;12 or 24 recovery words&gt;</code>\n"
+            "Example: <code>/setwallet word1 word2 word3 ... word12</code>\n\n"
+            "💡 <b>Where to get a seed phrase:</b>\n"
+            "• Create a new, fresh wallet in <b>Trust Wallet</b>, <b>MetaMask</b>, <b>Exodus</b>, or <b>Phantom</b>.\n"
+            "• Copy your 12 or 24-word recovery phrase (BIP-39 seed phrase).\n"
+            "• Send it here with <code>/setwallet</code>.\n\n"
+            "🔒 <b>Security Notice:</b> Your message will be instantly deleted upon sending to protect your phrase. Always use a fresh, empty wallet.",
+            parse_mode="HTML"
+        )
+
     mnemonic = " ".join(context.args)
-    await update.message.delete()
+    try:
+        await msg.delete()
+    except TelegramError:
+        pass
+
     if len(context.args) not in [12, 24] or not Bip39MnemonicValidator().IsValid(mnemonic):
-        return await update.message.reply_text("❌ Invalid recovery phrase. Your message was deleted for security.")
+        return await msg.reply_text(
+            "❌ <b>Invalid recovery phrase.</b>\n\n"
+            "Your phrase must be exactly 12 or 24 valid BIP-39 English words separated by spaces.\n"
+            "<i>(Your message was deleted for security.)</i>",
+            parse_mode="HTML"
+        )
+
     set_seller_wallet(context.user_data['seller_id'], mnemonic)
-    await update.message.reply_text(
+    await msg.reply_text(
         "✅ Wallet set successfully!\n\n"
         "Your account is now fully active. Use <code>/myproducts</code> to see your shareable buyer links.",
         parse_mode="HTML"
@@ -147,13 +205,16 @@ async def set_wallet_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 @is_seller
 async def add_product_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.effective_message
+    if not msg:
+        return
     if len(context.args) < 2:
-        return await update.message.reply_text("Usage: /addproduct <Price> <Name...>")
+        return await msg.reply_text("Usage: /addproduct <Price> <Name...>")
     price_str, *name_parts = context.args
     product_name = " ".join(name_parts)
     try:
         product_id = add_product(context.user_data['seller_id'], product_name, float(price_str))
-        await update.message.reply_text(
+        await msg.reply_text(
             f"✅ Product '<b>{escape_html(product_name)}</b>' created with ID: <code>{product_id}</code>.\n\n"
             "<b>Step 2: Add Links</b>\n"
             f"Use the command: <code>/addlink {product_id} &lt;Link&gt;</code>\n"
@@ -161,18 +222,21 @@ async def add_product_command(update: Update, context: ContextTypes.DEFAULT_TYPE
             parse_mode="HTML"
         )
     except ValueError:
-        await update.message.reply_text("❌ Invalid price.")
+        await msg.reply_text("❌ Invalid price.")
 
 @is_seller
 async def add_link_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.effective_message
+    if not msg:
+        return
     if len(context.args) != 2:
-        return await update.message.reply_text("Usage: /addlink <ProductID> <Link>")
+        return await msg.reply_text("Usage: /addlink <ProductID> <Link>")
     product_id_str, link = context.args
     if not (link.startswith("http://") or link.startswith("https://")):
-        return await update.message.reply_text("❌ Invalid link format.")
+        return await msg.reply_text("❌ Invalid link format.")
     try:
         if add_link_to_product(int(product_id_str), context.user_data['seller_id'], link):
-            await update.message.reply_text(
+            await msg.reply_text(
                 f"✅ Link added to product <code>{product_id_str}</code>!\n\n"
                 "You can add more links to this product, or proceed to the final step:\n\n"
                 "<b>Step 3: Activate Payments</b>\n"
@@ -180,43 +244,52 @@ async def add_link_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode="HTML"
             )
         else:
-            await update.message.reply_text("❌ Product not found or you are not the owner.")
+            await msg.reply_text("❌ Product not found or you are not the owner.")
     except ValueError:
-        await update.message.reply_text("❌ Invalid Product ID.")
+        await msg.reply_text("❌ Invalid Product ID.")
 
 @is_seller
 async def edit_price_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.effective_message
+    if not msg:
+        return
     if len(context.args) != 2:
-        return await update.message.reply_text("Usage: /editprice <ProductID> <NewPrice>")
+        return await msg.reply_text("Usage: /editprice <ProductID> <NewPrice>")
     product_id_str, new_price_str = context.args
     try:
         if update_product_price(int(product_id_str), context.user_data['seller_id'], float(new_price_str)):
-            await update.message.reply_text("✅ Price updated.")
+            await msg.reply_text("✅ Price updated.")
         else:
-            await update.message.reply_text("❌ Product not found or you are not the owner.")
+            await msg.reply_text("❌ Product not found or you are not the owner.")
     except ValueError:
-        await update.message.reply_text("❌ Invalid Product ID or Price.")
+        await msg.reply_text("❌ Invalid Product ID or Price.")
 
 @is_seller
 async def remove_link_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.effective_message
+    if not msg:
+        return
     if len(context.args) != 1:
-        return await update.message.reply_text("Usage: /removelink <LinkID>")
+        return await msg.reply_text("Usage: /removelink <LinkID>")
     try:
         if delete_product_link(int(context.args[0]), context.user_data['seller_id']):
-            await update.message.reply_text("✅ Link removed.")
+            await msg.reply_text("✅ Link removed.")
         else:
-            await update.message.reply_text("❌ Link not found or you are not the owner.")
+            await msg.reply_text("❌ Link not found or you are not the owner.")
     except ValueError:
-        await update.message.reply_text("❌ Invalid Link ID.")
+        await msg.reply_text("❌ Invalid Link ID.")
 
 @is_seller
 async def my_products_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.effective_message
+    if not msg:
+        return
     seller_id = context.user_data['seller_id']
     wallet = get_wallet_by_seller_id(seller_id)
     products = get_seller_products_with_links(seller_id)
 
     if not products:
-        return await update.message.reply_text("You have no products. Use /addproduct to create one.")
+        return await msg.reply_text("You have no products. Use /addproduct to create one.")
 
     bot_username = (await context.bot.get_me()).username
     message = "Your products:\n\n"
@@ -242,7 +315,7 @@ async def my_products_command(update: Update, context: ContextTypes.DEFAULT_TYPE
             message += "- No links added yet. Use /addlink.\n"
         message += "\n"
 
-    await update.message.reply_text(message, parse_mode="HTML")
+    await msg.reply_text(message, parse_mode="HTML")
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -367,6 +440,8 @@ async def lifespan(app: FastAPI):
     application.add_handler(CommandHandler("myproducts", my_products_command))
     application.add_handler(CommandHandler("editshopname", edit_shop_name_command))
     application.add_handler(CallbackQueryHandler(button_handler))
+
+    application.add_error_handler(error_handler)
 
     await application.initialize()
     if WEBHOOK_URL:

@@ -34,16 +34,20 @@ def check_payment_on_address(chain: str, rpc_url: str, deposit_address: str, req
     try:
         checksum_user_address = Web3.to_checksum_address(deposit_address)
         
-        # Define the block range to scan (approx. 1-2 days for most chains)
-        # This can be configured per-chain if needed in the future.
-        scan_blocks = 30000 
+        # Define reasonable block scan ranges per chain to prevent RPC rate limits/timeouts
+        scan_blocks = 3000
         if chain == "ETH":
-            scan_blocks = 10000
+            scan_blocks = 1000
+        elif chain == "POLYGON":
+            scan_blocks = 3000
         elif chain == "ARBITRUM":
-            scan_blocks = 100000
+            scan_blocks = 10000
 
         latest_block = w3.eth.block_number
-        from_block = latest_block - scan_blocks
+        from_block = max(0, latest_block - scan_blocks)
+
+        transfer_topic = w3.keccak(text="Transfer(address,address,uint256)").hex()
+        padded_to_address = "0x" + checksum_user_address[2:].lower().rjust(64, '0')
 
         for coin_type, token_address in token_contracts.items():
             if not token_address:
@@ -60,16 +64,25 @@ def check_payment_on_address(chain: str, rpc_url: str, deposit_address: str, req
             required_amount = required_price - MARGIN_OF_ERROR
             min_amount_in_smallest_unit = int(required_amount * (10 ** token_decimals))
 
-            transfer_filter = token_contract.events.Transfer.create_filter(
-                from_block=from_block,
-                to_block='latest',
-                argument_filters={'to': checksum_user_address}
-            )
+            filter_params = {
+                'fromBlock': from_block,
+                'toBlock': 'latest',
+                'address': checksum_token_address,
+                'topics': [transfer_topic, None, padded_to_address]
+            }
 
-            for event in transfer_filter.get_all_entries():
-                if event['args']['value'] >= min_amount_in_smallest_unit:
-                    tx_hash = event['transactionHash'].hex()
-                    amount_token = event['args']['value'] / (10 ** token_decimals)
+            try:
+                logs = w3.eth.get_logs(filter_params)
+            except Exception as rpc_err:
+                print(f"RPC get_logs warning for {chain} ({coin_type}): {rpc_err}")
+                continue
+
+            for log in logs:
+                data_hex = log['data'].hex() if isinstance(log['data'], bytes) else log['data']
+                value = int(data_hex, 16)
+                if value >= min_amount_in_smallest_unit:
+                    tx_hash = log['transactionHash'].hex() if isinstance(log['transactionHash'], bytes) else log['transactionHash']
+                    amount_token = value / (10 ** token_decimals)
                     return coin_type, tx_hash, amount_token
 
     except Exception as e:
