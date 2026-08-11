@@ -79,6 +79,49 @@ def create_all_tables():
             print(f"Migration: Adding missing column {col_name} to deposits table...")
             cur.execute(f"ALTER TABLE deposits ADD COLUMN {col_name} {col_def};")
 
+    # A seller can keep several wallets. One wallet is their default for newly
+    # created products; each product retains its own wallet assignment.
+    cur.execute("ALTER TABLE wallets ADD COLUMN IF NOT EXISTS is_default BOOLEAN NOT NULL DEFAULT FALSE;")
+    cur.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS wallet_id INT REFERENCES wallets(id);")
+    cur.execute("""
+        DO $$
+        DECLARE wallet_constraint RECORD;
+        BEGIN
+            FOR wallet_constraint IN
+                SELECT conname
+                FROM pg_constraint
+                WHERE conrelid = 'wallets'::regclass
+                  AND contype = 'u'
+                  AND pg_get_constraintdef(oid) = 'UNIQUE (seller_id)'
+            LOOP
+                EXECUTE format('ALTER TABLE wallets DROP CONSTRAINT %I', wallet_constraint.conname);
+            END LOOP;
+        END $$;
+    """)
+    cur.execute("""
+        UPDATE wallets w
+        SET is_default = TRUE
+        FROM (
+            SELECT DISTINCT ON (candidate.seller_id) candidate.id
+            FROM wallets candidate
+            WHERE NOT EXISTS (
+                SELECT 1 FROM wallets existing
+                WHERE existing.seller_id = candidate.seller_id AND existing.is_default
+            )
+            ORDER BY candidate.seller_id, candidate.id
+        ) defaults_to_restore
+        WHERE w.id = defaults_to_restore.id;
+    """)
+    cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS wallets_one_default_per_seller_idx ON wallets (seller_id) WHERE is_default;")
+    cur.execute("""
+        UPDATE products p
+        SET wallet_id = w.id
+        FROM wallets w
+        WHERE p.seller_id = w.seller_id
+          AND w.is_default = TRUE
+          AND p.wallet_id IS NULL;
+    """)
+
     # Fix the unique constraint to include product_id
     # First, try to drop the old one if it exists
     cur.execute("""
@@ -145,19 +188,27 @@ def get_seller_by_telegram_id(telegram_user_id):
     conn.close()
     return seller
 
-def set_seller_wallet(seller_id, mnemonic):
+def add_seller_wallet(seller_id, mnemonic, is_default=False):
     encrypted_mnemonic = encrypt_data(mnemonic)
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("INSERT INTO wallets (seller_id, encrypted_mnemonic) VALUES (%s, %s) ON CONFLICT (seller_id) DO UPDATE SET encrypted_mnemonic = EXCLUDED.encrypted_mnemonic;", (seller_id, encrypted_mnemonic))
+    if is_default:
+        cur.execute("UPDATE wallets SET is_default = FALSE WHERE seller_id = %s;", (seller_id,))
+    cur.execute(
+        "INSERT INTO wallets (seller_id, encrypted_mnemonic, is_default) VALUES (%s, %s, %s) RETURNING id;",
+        (seller_id, encrypted_mnemonic, is_default)
+    )
+    wallet_id = cur.fetchone()[0]
     conn.commit()
     cur.close()
     conn.close()
+    return wallet_id
 
 def get_wallet_by_seller_id(seller_id):
+    """Return the seller's default wallet (kept for existing call sites)."""
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("SELECT id, encrypted_mnemonic FROM wallets WHERE seller_id = %s", (seller_id,))
+    cur.execute("SELECT id, encrypted_mnemonic FROM wallets WHERE seller_id = %s AND is_default = TRUE", (seller_id,))
     wallet = cur.fetchone()
     cur.close()
     conn.close()
@@ -174,11 +225,53 @@ def get_wallet_by_seller_id(seller_id):
             return {"id": wallet_id, "mnemonic": decrypt_data(data_to_decrypt)}
     return None
 
-# --- Product & Link Functions ---
-def add_product(seller_id, name, price):
+def get_wallet_by_id(wallet_id, seller_id):
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("INSERT INTO products (seller_id, name, price) VALUES (%s, %s, %s) RETURNING id;", (seller_id, name, float(price)))
+    cur.execute("SELECT id, encrypted_mnemonic FROM wallets WHERE id = %s AND seller_id = %s", (wallet_id, seller_id))
+    wallet = cur.fetchone()
+    cur.close()
+    conn.close()
+    if not wallet:
+        return None
+    stored_wallet_id, encrypted_mnemonic = wallet
+    if isinstance(encrypted_mnemonic, str) and encrypted_mnemonic.startswith('\\x'):
+        data_to_decrypt = bytes.fromhex(encrypted_mnemonic[2:])
+    elif isinstance(encrypted_mnemonic, memoryview):
+        data_to_decrypt = encrypted_mnemonic.tobytes()
+    else:
+        data_to_decrypt = encrypted_mnemonic
+    return {"id": stored_wallet_id, "mnemonic": decrypt_data(data_to_decrypt)}
+
+def get_seller_wallets(seller_id):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT id, is_default, created_at FROM wallets WHERE seller_id = %s ORDER BY id", (seller_id,))
+    wallets = cur.fetchall()
+    cur.close()
+    conn.close()
+    return wallets
+
+def set_default_wallet(seller_id, wallet_id):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT 1 FROM wallets WHERE id = %s AND seller_id = %s", (wallet_id, seller_id))
+    if not cur.fetchone():
+        cur.close()
+        conn.close()
+        return False
+    cur.execute("UPDATE wallets SET is_default = FALSE WHERE seller_id = %s", (seller_id,))
+    cur.execute("UPDATE wallets SET is_default = TRUE WHERE id = %s", (wallet_id,))
+    conn.commit()
+    cur.close()
+    conn.close()
+    return True
+
+# --- Product & Link Functions ---
+def add_product(seller_id, name, price, wallet_id=None):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("INSERT INTO products (seller_id, name, price, wallet_id) VALUES (%s, %s, %s, %s) RETURNING id;", (seller_id, name, float(price), wallet_id))
     product_id = cur.fetchone()[0]
     conn.commit()
     cur.close()
@@ -199,15 +292,15 @@ def add_link_to_product(product_id, seller_id, invite_link):
 def get_seller_products_with_links(seller_id):
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("SELECT id, name, price FROM products WHERE seller_id = %s AND is_active = TRUE ORDER BY created_at DESC", (seller_id,))
+    cur.execute("SELECT id, name, price, wallet_id FROM products WHERE seller_id = %s AND is_active = TRUE ORDER BY created_at DESC", (seller_id,))
     products = cur.fetchall()
     
     product_details = []
     for prod in products:
-        product_id, name, price = prod
+        product_id, name, price, wallet_id = prod
         cur.execute("SELECT id, invite_link FROM product_links WHERE product_id = %s;", (product_id,))
         links = cur.fetchall()
-        product_details.append({"id": product_id, "name": name, "price": price, "links": links})
+        product_details.append({"id": product_id, "name": name, "price": price, "wallet_id": wallet_id, "links": links})
         
     cur.close()
     conn.close()
@@ -216,7 +309,7 @@ def get_seller_products_with_links(seller_id):
 def get_product_by_id(product_id):
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("SELECT id, seller_id, name, price, currency, is_active FROM products WHERE id = %s", (product_id,))
+    cur.execute("SELECT id, seller_id, name, price, currency, is_active, wallet_id FROM products WHERE id = %s", (product_id,))
     product = cur.fetchone()
     cur.close()
     conn.close()
@@ -235,6 +328,42 @@ def update_product_price(product_id, seller_id, new_price):
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute("UPDATE products SET price = %s WHERE id = %s AND seller_id = %s;", (float(new_price), product_id, seller_id))
+    updated_rows = cur.rowcount
+    conn.commit()
+    cur.close()
+    conn.close()
+    return updated_rows > 0
+
+def assign_wallet_to_product(product_id, seller_id, wallet_id):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute(
+        """UPDATE products SET wallet_id = %s
+           WHERE id = %s AND seller_id = %s
+             AND EXISTS (SELECT 1 FROM wallets WHERE id = %s AND seller_id = %s);""",
+        (wallet_id, product_id, seller_id, wallet_id, seller_id)
+    )
+    updated_rows = cur.rowcount
+    conn.commit()
+    cur.close()
+    conn.close()
+    return updated_rows > 0
+
+def assign_unassigned_products_to_wallet(seller_id, wallet_id):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("UPDATE products SET wallet_id = %s WHERE seller_id = %s AND wallet_id IS NULL", (wallet_id, seller_id))
+    conn.commit()
+    cur.close()
+    conn.close()
+
+def update_product_name(product_id, seller_id, new_name):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "UPDATE products SET name = %s WHERE id = %s AND seller_id = %s;",
+        (new_name, product_id, seller_id)
+    )
     updated_rows = cur.rowcount
     conn.commit()
     cur.close()

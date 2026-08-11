@@ -11,9 +11,10 @@ from telegram.error import Forbidden, TelegramError
 from bip_utils import Bip39MnemonicValidator
 
 from backend.database import (
-    create_all_tables, add_seller, get_seller_by_telegram_id, set_seller_wallet, get_wallet_by_seller_id,
+    create_all_tables, add_seller, get_seller_by_telegram_id, add_seller_wallet, get_wallet_by_seller_id, get_wallet_by_id,
+    get_seller_wallets, set_default_wallet, assign_wallet_to_product, assign_unassigned_products_to_wallet,
     add_product, get_seller_products_with_links, get_product_by_id, add_link_to_product, get_product_links,
-    update_product_price, delete_product_link, update_seller_name, create_deposit_address,
+    update_product_price, update_product_name, delete_product_link, update_seller_name, create_deposit_address,
     get_pending_deposit_for_user, confirm_payment, get_next_address_index, get_deposit_by_id
 )
 from backend.hd_wallet import generate_new_address
@@ -83,12 +84,12 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except (ValueError, IndexError):
             return await msg.reply_text("Invalid product link.")
 
-        _, seller_id, _, _, _, _ = product
-        if not get_wallet_by_seller_id(seller_id):
-            return await msg.reply_text("This product is currently inactive because the seller has not configured their payment wallet.")
+        _, seller_id, _, _, _, is_active, wallet_id = product
+        if not is_active or not wallet_id:
+            return await msg.reply_text("This product is currently inactive because the seller has not assigned a payment wallet.")
 
         context.user_data['product_id'] = product[0]
-        _, _, name, price, currency, _ = product
+        _, _, name, price, currency, _, _ = product
         keyboard = [[InlineKeyboardButton("✅ Proceed to Payment", callback_data="show_chains")]]
         await msg.reply_text(
             f"Welcome! You are paying for <b>{escape_html(name)}</b>.\n\n"
@@ -120,11 +121,16 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "1. <code>/register &lt;ShopName&gt;</code> - Create your seller account.\n"
         "2. <code>/addproduct &lt;Price&gt; &lt;Name&gt;</code> - Create a product bundle.\n"
         "3. <code>/addlink &lt;ProductID&gt; &lt;Link&gt;</code> - Add a link to your product.\n"
-        "4. <code>/setwallet &lt;Phrase&gt;</code> - Activate payments with your 12/24 word recovery phrase.\n"
+        "4. <code>/setwallet &lt;Phrase&gt;</code> - Set your first payment wallet.\n"
         "5. <code>/myproducts</code> - Get your shareable buyer links and manage products.\n\n"
         "<b>Additional Commands:</b>\n"
         "• <code>/editshopname &lt;NewName&gt;</code> - Change your shop's display name.\n"
         "• <code>/editprice &lt;ProductID&gt; &lt;NewPrice&gt;</code> - Update a product's price.\n"
+        "• <code>/editname &lt;ProductID&gt; &lt;NewName&gt;</code> - Update a product's name.\n"
+        "• <code>/addwallet &lt;Phrase&gt;</code> - Add another payment wallet.\n"
+        "• <code>/wallets</code> - List your wallet IDs and default wallet.\n"
+        "• <code>/usewallet &lt;WalletID&gt;</code> - Use a wallet by default for new products.\n"
+        "• <code>/assignwallet &lt;ProductID&gt; &lt;WalletID&gt;</code> - Set a product's payment wallet.\n"
         "• <code>/removelink &lt;LinkID&gt;</code> - Delete a link from a bundle.\n\n"
         "💡 <i>Tip: For your security, always use a fresh, empty wallet recovery phrase for /setwallet.</i>"
     )
@@ -196,12 +202,95 @@ async def set_wallet_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
             parse_mode="HTML"
         )
 
-    set_seller_wallet(context.user_data['seller_id'], mnemonic)
+    seller_id = context.user_data['seller_id']
+    if get_wallet_by_seller_id(seller_id):
+        return await msg.reply_text(
+            "⚠️ You already have a default wallet. Use <code>/addwallet &lt;Phrase&gt;</code> to add another wallet, "
+            "or <code>/usewallet &lt;WalletID&gt;</code> to change the default.",
+            parse_mode="HTML"
+        )
+
+    wallet_id = add_seller_wallet(seller_id, mnemonic, is_default=True)
+    assign_unassigned_products_to_wallet(seller_id, wallet_id)
     await msg.reply_text(
-        "✅ Wallet set successfully!\n\n"
-        "Your account is now fully active. Use <code>/myproducts</code> to see your shareable buyer links.",
+        "✅ First wallet set successfully! Existing products without a wallet now use it.\n\n"
+        "Use <code>/myproducts</code> to see your shareable buyer links.",
         parse_mode="HTML"
     )
+
+@is_seller
+async def add_wallet_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.effective_message
+    if not msg:
+        return
+    if len(context.args) == 0:
+        return await msg.reply_text("Usage: /addwallet <12 or 24 recovery words>")
+
+    mnemonic = " ".join(context.args)
+    try:
+        await msg.delete()
+    except TelegramError:
+        pass
+    if len(context.args) not in [12, 24] or not Bip39MnemonicValidator().IsValid(mnemonic):
+        return await msg.reply_text("❌ Invalid recovery phrase. Your message was deleted for security.")
+
+    wallet_id = add_seller_wallet(context.user_data['seller_id'], mnemonic)
+    await msg.reply_text(
+        f"✅ Wallet <code>{wallet_id}</code> added. It is not the default; use "
+        f"<code>/usewallet {wallet_id}</code> for new products or "
+        f"<code>/assignwallet &lt;ProductID&gt; {wallet_id}</code> for a specific product.",
+        parse_mode="HTML"
+    )
+
+@is_seller
+async def wallets_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.effective_message
+    if not msg:
+        return
+    wallets = get_seller_wallets(context.user_data['seller_id'])
+    if not wallets:
+        return await msg.reply_text("You have no wallets. Use /setwallet to add your first one.")
+    lines = ["<b>Your wallets</b> (seed phrases are never shown):"]
+    for wallet_id, is_default, created_at in wallets:
+        default_marker = " — default for new products" if is_default else ""
+        lines.append(f"• Wallet <code>{wallet_id}</code>{default_marker}")
+    await msg.reply_text("\n".join(lines), parse_mode="HTML")
+
+@is_seller
+async def use_wallet_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.effective_message
+    if not msg:
+        return
+    if len(context.args) != 1:
+        return await msg.reply_text("Usage: /usewallet <WalletID>")
+    try:
+        wallet_id = int(context.args[0])
+    except ValueError:
+        return await msg.reply_text("❌ Invalid Wallet ID.")
+    if set_default_wallet(context.user_data['seller_id'], wallet_id):
+        await msg.reply_text(f"✅ Wallet <code>{wallet_id}</code> is now the default for new products.", parse_mode="HTML")
+    else:
+        await msg.reply_text("❌ Wallet not found or you are not the owner.")
+
+@is_seller
+async def assign_wallet_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.effective_message
+    if not msg:
+        return
+    if len(context.args) != 2:
+        return await msg.reply_text("Usage: /assignwallet <ProductID> <WalletID>")
+    try:
+        product_id, wallet_id = map(int, context.args)
+    except ValueError:
+        return await msg.reply_text("❌ Product ID and Wallet ID must be numbers.")
+    if assign_wallet_to_product(product_id, context.user_data['seller_id'], wallet_id):
+        await msg.reply_text(
+            f"✅ New payments for product <code>{product_id}</code> will use wallet <code>{wallet_id}</code>. "
+            "Existing pending deposits keep their original address.",
+            parse_mode="HTML"
+        )
+    else:
+        await msg.reply_text("❌ Product or wallet not found, or you are not the owner.")
 
 @is_seller
 async def add_product_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -213,12 +302,21 @@ async def add_product_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     price_str, *name_parts = context.args
     product_name = " ".join(name_parts)
     try:
-        product_id = add_product(context.user_data['seller_id'], product_name, float(price_str))
+        wallet = get_wallet_by_seller_id(context.user_data['seller_id'])
+        product_id = add_product(context.user_data['seller_id'], product_name, float(price_str), wallet["id"] if wallet else None)
+        payment_step = (
+            "<b>Payments</b>\n"
+            "Your existing payment wallet will automatically be used for this product."
+            if wallet else
+            "<b>Step 3: Activate Payments</b>\n"
+            "Use <code>/setwallet &lt;Phrase&gt;</code> once to activate your shop and all its products."
+        )
         await msg.reply_text(
             f"✅ Product '<b>{escape_html(product_name)}</b>' created with ID: <code>{product_id}</code>.\n\n"
             "<b>Step 2: Add Links</b>\n"
             f"Use the command: <code>/addlink {product_id} &lt;Link&gt;</code>\n"
-            "Example: <code>/addlink {product_id} https://example.com/file</code>",
+            f"Example: <code>/addlink {product_id} https://example.com/file</code>\n\n"
+            f"{payment_step}",
             parse_mode="HTML"
         )
     except ValueError:
@@ -236,11 +334,18 @@ async def add_link_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await msg.reply_text("❌ Invalid link format.")
     try:
         if add_link_to_product(int(product_id_str), context.user_data['seller_id'], link):
+            product = get_product_by_id(int(product_id_str))
+            has_wallet = product and product[6]
+            payment_message = (
+                "The wallet assigned to this product will be used for its payments. "
+                "Use <code>/myproducts</code> to get its buyer link."
+                if has_wallet else
+                "<b>Step 3: Assign Payments</b>\n"
+                "Use <code>/assignwallet &lt;ProductID&gt; &lt;WalletID&gt;</code> to activate this product."
+            )
             await msg.reply_text(
                 f"✅ Link added to product <code>{product_id_str}</code>!\n\n"
-                "You can add more links to this product, or proceed to the final step:\n\n"
-                "<b>Step 3: Activate Payments</b>\n"
-                "Use <code>/setwallet &lt;Phrase&gt;</code> to activate your shop and get your shareable buyer links.",
+                f"{payment_message}",
                 parse_mode="HTML"
             )
         else:
@@ -265,6 +370,24 @@ async def edit_price_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await msg.reply_text("❌ Invalid Product ID or Price.")
 
 @is_seller
+async def edit_product_name_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.effective_message
+    if not msg:
+        return
+    if len(context.args) < 2:
+        return await msg.reply_text("Usage: /editname <ProductID> <NewName...>")
+
+    product_id_str, *name_parts = context.args
+    new_name = " ".join(name_parts)
+    try:
+        if update_product_name(int(product_id_str), context.user_data['seller_id'], new_name):
+            await msg.reply_text("✅ Product name updated.")
+        else:
+            await msg.reply_text("❌ Product not found or you are not the owner.")
+    except ValueError:
+        await msg.reply_text("❌ Invalid Product ID.")
+
+@is_seller
 async def remove_link_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.effective_message
     if not msg:
@@ -285,7 +408,6 @@ async def my_products_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     if not msg:
         return
     seller_id = context.user_data['seller_id']
-    wallet = get_wallet_by_seller_id(seller_id)
     products = get_seller_products_with_links(seller_id)
 
     if not products:
@@ -294,18 +416,14 @@ async def my_products_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     bot_username = (await context.bot.get_me()).username
     message = "Your products:\n\n"
 
-    if not wallet:
-        message += "⚠️ <b>WARNING:</b> You have not set a payment wallet. Your products are inactive.\n"
-        message += "Please use <code>/setwallet</code> to activate them and receive your buyer links.\n\n"
-
     for product in products:
         message += f"<b>{escape_html(product['name'])}</b> (${float(product['price']):.2f}) - ID: <code>{product['id']}</code>\n"
-
-        if wallet:
+        if product['wallet_id']:
+            message += f"- Payment wallet: <code>{product['wallet_id']}</code>\n"
             deep_link = f"https://t.me/{bot_username}?start={product['id']}"
             message += f"- Buyer Link: {deep_link}\n"
         else:
-            message += "- Buyer Link: [INACTIVE - use /setwallet]\n"
+            message += "- Buyer Link: [INACTIVE - use /assignwallet]\n"
 
         if product['links']:
             message += "- Links in bundle:\n"
@@ -331,7 +449,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not product:
         return await query.edit_message_text("This product is no longer available.")
 
-    prod_id, seller_id, name, price, currency, is_active = product
+    prod_id, seller_id, name, price, currency, is_active, wallet_id = product
 
     if callback_data == "show_chains" or callback_data == "back_to_chains":
         buttons = [InlineKeyboardButton(chain, callback_data=f"deposit_{chain}") for chain in RPC_URLS if RPC_URLS.get(chain)]
@@ -343,7 +461,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif callback_data.startswith("deposit_"):
         chain = callback_data.split("_")[1]
-        wallet = get_wallet_by_seller_id(seller_id)
+        wallet = get_wallet_by_id(wallet_id, seller_id) if wallet_id else None
         if not wallet:
             return await query.edit_message_text("Seller has not configured their wallet.")
         
@@ -424,8 +542,13 @@ async def lifespan(app: FastAPI):
         BotCommand("addlink", "Add a link to a product"),
         BotCommand("removelink", "Remove a link from a product"),
         BotCommand("editprice", "Change a product's price"),
+        BotCommand("editname", "Change a product name"),
         BotCommand("editshopname", "Change your shop name"),
         BotCommand("setwallet", "Set your payment wallet"),
+        BotCommand("addwallet", "Add another payment wallet"),
+        BotCommand("wallets", "List your payment wallets"),
+        BotCommand("usewallet", "Set default wallet for new products"),
+        BotCommand("assignwallet", "Assign a wallet to a product"),
     ]
     await application.bot.set_my_commands(commands)
 
@@ -433,9 +556,14 @@ async def lifespan(app: FastAPI):
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("register", register_command))
     application.add_handler(CommandHandler("setwallet", set_wallet_command))
+    application.add_handler(CommandHandler("addwallet", add_wallet_command))
+    application.add_handler(CommandHandler("wallets", wallets_command))
+    application.add_handler(CommandHandler("usewallet", use_wallet_command))
+    application.add_handler(CommandHandler("assignwallet", assign_wallet_command))
     application.add_handler(CommandHandler("addproduct", add_product_command))
     application.add_handler(CommandHandler("addlink", add_link_command))
     application.add_handler(CommandHandler("editprice", edit_price_command))
+    application.add_handler(CommandHandler("editname", edit_product_name_command))
     application.add_handler(CommandHandler("removelink", remove_link_command))
     application.add_handler(CommandHandler("myproducts", my_products_command))
     application.add_handler(CommandHandler("editshopname", edit_shop_name_command))
