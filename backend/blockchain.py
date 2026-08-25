@@ -46,7 +46,7 @@ def check_payment_on_address(chain: str, rpc_url: str, deposit_address: str, req
         latest_block = w3.eth.block_number
         from_block = max(0, latest_block - scan_blocks)
 
-        transfer_topic = w3.keccak(text="Transfer(address,address,uint256)").hex()
+        transfer_topic = w3.to_hex(w3.keccak(text="Transfer(address,address,uint256)"))
         padded_to_address = "0x" + checksum_user_address[2:].lower().rjust(64, '0')
 
         for coin_type, token_address in token_contracts.items():
