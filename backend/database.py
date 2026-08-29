@@ -387,15 +387,25 @@ def delete_product_link(link_id, seller_id):
     return deleted_rows > 0
     
 # --- Deposit Functions ---
-def get_next_address_index(wallet_id: int) -> int:
+def get_next_address_index(wallet_id: int, chain: str = "ETH") -> int:
     conn = get_db_connection()
     cur = conn.cursor()
-    # We use a broad check to find the max index ever used for this wallet
-    cur.execute("SELECT MAX(address_index) FROM deposits WHERE wallet_id = %s;", (wallet_id,))
+    # Solana has an independent HD derivation tree from EVM chains
+    if chain and chain.upper() == "SOLANA":
+        cur.execute(
+            "SELECT MAX(address_index) FROM deposits WHERE wallet_id = %s AND UPPER(chain) = 'SOLANA';",
+            (wallet_id,)
+        )
+    else:
+        cur.execute(
+            "SELECT MAX(address_index) FROM deposits WHERE wallet_id = %s AND (chain IS NULL OR UPPER(chain) != 'SOLANA');",
+            (wallet_id,)
+        )
     max_index = cur.fetchone()[0]
     cur.close()
     conn.close()
     return (max_index + 1) if max_index is not None else 0
+
 
 def create_deposit_address(product_id: int, wallet_id: int, telegram_user_id: int, address: str, address_index: int, seller_id: int, chain: str) -> int:
     conn = get_db_connection()

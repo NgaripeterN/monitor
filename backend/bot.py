@@ -497,7 +497,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             deposit_id, address = existing_deposit
         else:
             # Generate a new unique address
-            next_index = get_next_address_index(wallet_id)
+            next_index = get_next_address_index(wallet_id, chain=chain)
             address = generate_new_address(mnemonic, next_index, chain=chain)
             try:
                 deposit_id = create_deposit_address(product_id, wallet_id, user_id, address, next_index, seller_id, chain)
