@@ -33,18 +33,33 @@ logger = logging.getLogger(__name__)
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
-RPC_URLS = { chain: os.getenv(f"{chain}_RPC_URL") for chain in ["ETH", "POLYGON", "BASE", "ARBITRUM", "BSC"] }
+RPC_URLS = { chain: os.getenv(f"{chain}_RPC_URL") for chain in ["ETH", "POLYGON", "BASE", "ARBITRUM", "BSC", "SOLANA"] }
 TOKEN_CONTRACTS = {
-    "USDT": {"ETH": "0xdac17f958d2ee523a2206206994597c13d831ec7", "POLYGON": "0xc2132d05d31c914a87c6611c10748aeb04b58e8f", "BASE": "0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2", "ARBITRUM": "0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9", "BSC": "0x55d398326f99059ff775485246999027b3197955"},
-    "USDC": {"ETH": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", "POLYGON": "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359", "BASE": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", "ARBITRUM": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831", "BSC": "0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d"}
+    "USDT": {
+        "ETH": "0xdac17f958d2ee523a2206206994597c13d831ec7",
+        "POLYGON": "0xc2132d05d31c914a87c6611c10748aeb04b58e8f",
+        "BASE": "0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2",
+        "ARBITRUM": "0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9",
+        "BSC": "0x55d398326f99059ff775485246999027b3197955",
+        "SOLANA": "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB"
+    },
+    "USDC": {
+        "ETH": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+        "POLYGON": "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",
+        "BASE": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "ARBITRUM": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+        "BSC": "0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d",
+        "SOLANA": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+    }
 }
 
 CHAIN_DETAILS = {
-    "ETH": {"name": "Ethereum (ERC-20)", "native": "ETH"},
-    "POLYGON": {"name": "Polygon (POS)", "native": "POL / MATIC"},
-    "BASE": {"name": "Base", "native": "ETH"},
-    "ARBITRUM": {"name": "Arbitrum One", "native": "ETH"},
-    "BSC": {"name": "BNB Smart Chain (BEP-20)", "native": "BNB"},
+    "ETH": {"name": "Ethereum (ERC-20)", "native": "ETH", "wallets": "MetaMask / Trust Wallet"},
+    "POLYGON": {"name": "Polygon (POS)", "native": "POL / MATIC", "wallets": "MetaMask / Trust Wallet"},
+    "BASE": {"name": "Base", "native": "ETH", "wallets": "MetaMask / Trust Wallet"},
+    "ARBITRUM": {"name": "Arbitrum One", "native": "ETH", "wallets": "MetaMask / Trust Wallet"},
+    "BSC": {"name": "BNB Smart Chain (BEP-20)", "native": "BNB", "wallets": "MetaMask / Trust Wallet"},
+    "SOLANA": {"name": "Solana (SPL)", "native": "SOL", "wallets": "Phantom / Solflare"},
 }
 
 application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
@@ -483,7 +498,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             # Generate a new unique address
             next_index = get_next_address_index(wallet_id)
-            address = generate_new_address(mnemonic, next_index)
+            address = generate_new_address(mnemonic, next_index, chain=chain)
             try:
                 deposit_id = create_deposit_address(product_id, wallet_id, user_id, address, next_index, seller_id, chain)
             except Exception as e:
@@ -496,9 +511,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("✅ I Have Paid", callback_data=f"check_{chain}")],
             [InlineKeyboardButton("⬅️ Back", callback_data="show_chains")]
         ]
-        chain_info = CHAIN_DETAILS.get(chain, {"name": chain, "native": "native coin"})
+        chain_info = CHAIN_DETAILS.get(chain, {"name": chain, "native": "native coin", "wallets": "MetaMask / Trust Wallet"})
         chain_name = chain_info["name"]
         native_token = chain_info["native"]
+        wallet_tip = chain_info.get("wallets", "MetaMask / Trust Wallet")
         formatted_price = f"{float(price):.2f}"
 
         deposit_text = (
@@ -509,7 +525,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"<code>{address}</code>\n\n"
             f"⚠️ <b>Instructions:</b>\n"
             f"• <b>Transfer:</b> Send <b>USDC or USDT only</b> (do <b>NOT</b> send {native_token} as payment).\n"
-            f"• <b>MetaMask / Trust Wallet:</b> Ensure your wallet has a tiny amount of {native_token} on {chain_name} for gas.\n"
+            f"• <b>{wallet_tip}:</b> Ensure your wallet has a tiny amount of {native_token} on {chain_name} for gas.\n"
             f"• <b>Exchanges (Kraken / Binance / OKX):</b> Withdraw directly to the address above (no gas balance needed)."
         )
 
