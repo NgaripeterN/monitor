@@ -41,7 +41,7 @@ def check_payment_on_address(chain: str, rpc_url: str, deposit_address: str, req
         elif chain == "POLYGON":
             scan_blocks = 3000
         elif chain == "ARBITRUM":
-            scan_blocks = 10000
+            scan_blocks = 5000
 
         latest_block = w3.eth.block_number
         from_block = max(0, latest_block - scan_blocks)
@@ -61,7 +61,9 @@ def check_payment_on_address(chain: str, rpc_url: str, deposit_address: str, req
             except Exception:
                 token_decimals = 6 if coin_type == 'USDC' else 18 # Educated guess
 
-            required_amount = required_price - MARGIN_OF_ERROR
+            # Smart margin: Allows up to $0.50 tolerance (or 5% for smaller orders) to absorb CEX withdrawal fees
+            margin = min(0.50, required_price * 0.05) if required_price > 5.0 else min(0.10, required_price * 0.10)
+            required_amount = max(0.01, required_price - margin)
             min_amount_in_smallest_unit = int(required_amount * (10 ** token_decimals))
 
             filter_params = {

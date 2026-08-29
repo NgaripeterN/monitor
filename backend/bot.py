@@ -508,9 +508,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"• <b>Deposit Address:</b>\n"
             f"<code>{address}</code>\n\n"
             f"⚠️ <b>Important:</b>\n"
-            f"• Send <b>USDC or USDT only</b> on the <b>{chain_name}</b> network.\n"
-            f"• <b>Do NOT send {native_token}</b> or tokens from other networks.\n"
-            f"• Gas fees are paid by your wallet in {native_token}."
+            f"• Send <b>USDC or USDT only</b> (do <b>NOT</b> send {native_token}).\n"
+            f"• <b>Wallets (MetaMask / Trust):</b> Keep a little {native_token} for gas.\n"
+            f"• <b>Exchanges (Kraken / Binance / OKX):</b> Withdraw directly to the address above (no gas needed)."
         )
 
         await query.edit_message_text(
