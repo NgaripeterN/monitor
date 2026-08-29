@@ -39,6 +39,14 @@ TOKEN_CONTRACTS = {
     "USDC": {"ETH": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", "POLYGON": "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359", "BASE": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", "ARBITRUM": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831", "BSC": "0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d"}
 }
 
+CHAIN_DETAILS = {
+    "ETH": {"name": "Ethereum (ERC-20)", "native": "ETH"},
+    "POLYGON": {"name": "Polygon (POS)", "native": "POL / MATIC"},
+    "BASE": {"name": "Base", "native": "ETH"},
+    "ARBITRUM": {"name": "Arbitrum One", "native": "ETH"},
+    "BSC": {"name": "BNB Smart Chain (BEP-20)", "native": "BNB"},
+}
+
 application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -488,9 +496,25 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("✅ I Have Paid", callback_data=f"check_{chain}")],
             [InlineKeyboardButton("⬅️ Back", callback_data="show_chains")]
         ]
+        chain_info = CHAIN_DETAILS.get(chain, {"name": chain, "native": "native coin"})
+        chain_name = chain_info["name"]
+        native_token = chain_info["native"]
+        formatted_price = f"{float(price):.2f}"
+
+        deposit_text = (
+            f"💳 <b>Payment Details</b>\n\n"
+            f"• <b>Amount:</b> <code>{formatted_price} USDC</code> or <code>{formatted_price} USDT</code>\n"
+            f"• <b>Network:</b> <b>{chain_name}</b>\n"
+            f"• <b>Deposit Address:</b>\n"
+            f"<code>{address}</code>\n\n"
+            f"⚠️ <b>Important:</b>\n"
+            f"• Send <b>USDC or USDT only</b> on the <b>{chain_name}</b> network.\n"
+            f"• <b>Do NOT send {native_token}</b> or tokens from other networks.\n"
+            f"• Gas fees are paid by your wallet in {native_token}."
+        )
+
         await query.edit_message_text(
-            f"Please send <b>${float(price):.2f}</b> (+ gas) to this address on the <b>{chain}</b> network:\n\n"
-            f"<code>{address}</code>",
+            deposit_text,
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="HTML"
         )
