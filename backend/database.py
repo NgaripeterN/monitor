@@ -138,16 +138,19 @@ def create_all_tables():
         END $$;
     """)
     
-    # Add the new, more flexible unique constraint
-    # This allows a user to have one pending deposit per product per chain
+    # A buyer may complete multiple purchases of the same product on a chain,
+    # but should have only one checkout awaiting payment at a time.
     cur.execute("""
         DO $$
         BEGIN
-            IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'deposits_user_product_chain_pending_key') THEN
-                ALTER TABLE deposits ADD CONSTRAINT deposits_user_product_chain_pending_key 
-                UNIQUE (telegram_user_id, product_id, chain, status);
-            END IF;
+            ALTER TABLE deposits
+            DROP CONSTRAINT IF EXISTS deposits_user_product_chain_pending_key;
         END $$;
+    """)
+    cur.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS deposits_one_pending_per_user_product_chain_idx
+        ON deposits (telegram_user_id, product_id, chain)
+        WHERE status = 'pending';
     """)
 
     conn.commit()
