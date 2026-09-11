@@ -553,10 +553,17 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if tx_hash:
             confirm_payment(deposit_id, tx_hash, amount_paid, coin_type)
             links = get_product_links(product_id)
-            links_text = "\n".join(links)
+            # Telegram only renders HTML anchors when the message parse mode is HTML.
+            # Escape both the URL displayed to the buyer and the href attribute because
+            # product links are seller-provided input.
+            links_text = "\n".join(
+                f'<a href="{escape_html(link)}">{escape_html(link)}</a>'
+                for link in links
+            )
             await query.edit_message_text(
                 f"✅ Payment of {amount_paid:.2f} {coin_type} confirmed!\n\n"
-                f"Your link(s):\n{links_text}"
+                f"Your link(s):\n{links_text}",
+                parse_mode="HTML"
             )
         else:
             keyboard = [
