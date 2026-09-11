@@ -33,6 +33,8 @@ logger = logging.getLogger(__name__)
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
+# Temporary local-testing switch. Leave unset in production and remove after use.
+TEST_BYPASS_TELEGRAM_ID = os.getenv("TEST_BYPASS_TELEGRAM_ID")
 RPC_URLS = { chain: os.getenv(f"{chain}_RPC_URL") for chain in ["ETH", "POLYGON", "BASE", "ARBITRUM", "BSC", "SOLANA"] }
 TOKEN_CONTRACTS = {
     "USDT": {
@@ -548,7 +550,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(f"⏳ Scanning {chain} for your payment...")
         rpc_url = RPC_URLS.get(chain)
         tokens_to_check = {token: contract.get(chain) for token, contract in TOKEN_CONTRACTS.items() if contract.get(chain)}
-        coin_type, tx_hash, amount_paid = check_payment_on_address(chain, rpc_url, deposit_address, float(price), tokens_to_check)
+        if TEST_BYPASS_TELEGRAM_ID and str(user_id) == TEST_BYPASS_TELEGRAM_ID:
+            logger.warning("Using temporary payment bypass for Telegram user %s", user_id)
+            coin_type, tx_hash, amount_paid = "USDT", f"test-{deposit_id}", float(price)
+        else:
+            coin_type, tx_hash, amount_paid = check_payment_on_address(
+                chain, rpc_url, deposit_address, float(price), tokens_to_check
+            )
 
         if tx_hash:
             confirm_payment(deposit_id, tx_hash, amount_paid, coin_type)
