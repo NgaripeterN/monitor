@@ -142,9 +142,9 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📚 <b>AccessBot Help Center</b>\n\n"
         "<b>For Sellers:</b>\n"
         "1. <code>/register &lt;ShopName&gt;</code> - Create your seller account.\n"
-        "2. <code>/setwallet &lt;Phrase&gt;</code> - Set your first/default payment wallet.\n"
-        "3. <code>/addproduct &lt;Price&gt; &lt;Name&gt;</code> - Create a product bundle.\n"
-        "4. <code>/addlink &lt;ProductID&gt; &lt;Link&gt;</code> - Add a link to your product.\n"
+        "2. <code>/addproduct &lt;Price&gt; &lt;Name&gt;</code> - Create a product bundle.\n"
+        "3. <code>/addlink &lt;ProductID&gt; &lt;Link&gt;</code> - Add a link to your product.\n"
+        "4. <code>/setwallet &lt;Phrase&gt;</code> - Set your first/default payment wallet.\n"
         "5. <code>/myproducts</code> - Get your shareable buyer links and manage products.\n\n"
         "<b>Additional Commands:</b>\n"
         "• <code>/editshopname &lt;NewName&gt;</code> - Change your shop's display name.\n"
@@ -173,10 +173,9 @@ async def register_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await msg.reply_text(
         "✅ Seller account created successfully!\n\n"
-        "<b>Step 1: Set Your Payment Wallet</b>\n"
-        "Use the command: <code>/setwallet &lt;12 or 24 recovery words&gt;</code>\n\n"
-        "Use a fresh, empty wallet created only for receiving shop payments. "
-        "Your message is deleted immediately after it is processed.",
+        "<b>Step 1: Create a Product Bundle</b>\n"
+        "Use the command: <code>/addproduct &lt;Price&gt; &lt;Name&gt;</code>\n"
+        "Example: <code>/addproduct 19.99 Premium Bundle</code>",
         parse_mode="HTML"
     )
 
@@ -238,7 +237,7 @@ async def set_wallet_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     assign_unassigned_products_to_wallet(seller_id, wallet_id)
     await msg.reply_text(
         "✅ First wallet set successfully! Existing products without a wallet now use it.\n\n"
-        "<b>Next:</b> Create a product with <code>/addproduct &lt;Price&gt; &lt;Name&gt;</code>.",
+        "<b>Next:</b> Use <code>/myproducts</code> to get your shareable buyer link.",
         parse_mode="HTML"
     )
 
@@ -347,12 +346,12 @@ async def add_product_command(update: Update, context: ContextTypes.DEFAULT_TYPE
             "<b>Payments</b>\n"
             "Your existing payment wallet will automatically be used for this product."
             if wallet else
-            "<b>Step 3: Activate Payments</b>\n"
-            "Use <code>/setwallet &lt;Phrase&gt;</code> once to activate your shop and all its products."
+            "<b>After adding your links:</b> Set your payment wallet with "
+            "<code>/setwallet &lt;Phrase&gt;</code> to activate this product."
         )
         await msg.reply_text(
             f"✅ Product '<b>{escape_html(product_name)}</b>' created with ID: <code>{product_id}</code>.\n\n"
-            "<b>Step 2: Add Links</b>\n"
+            "<b>Next: Add Links</b>\n"
             f"Use the command: <code>/addlink {product_id} &lt;Link&gt;</code>\n"
             f"Example: <code>/addlink {product_id} https://example.com/file</code>\n\n"
             f"{payment_step}",
@@ -379,8 +378,9 @@ async def add_link_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "The wallet assigned to this product will be used for its payments. "
                 "Use <code>/myproducts</code> to get its buyer link."
                 if has_wallet else
-                "<b>Step 3: Assign Payments</b>\n"
-                "Use <code>/assignwallet &lt;ProductID&gt; &lt;WalletID&gt;</code> to activate this product."
+                "<b>Final Step: Activate Payments</b>\n"
+                "Use <code>/setwallet &lt;Phrase&gt;</code> to activate all products without a wallet, "
+                "or <code>/assignwallet &lt;ProductID&gt; &lt;Phrase&gt;</code> for this product only."
             )
             await msg.reply_text(
                 f"✅ Link added to product <code>{product_id_str}</code>!\n\n"
