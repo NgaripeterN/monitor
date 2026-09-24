@@ -47,7 +47,7 @@ Copy the output. This will be your `DATA_ENCRYPTION_KEY`.
 *   **/addwallet `<12-24 word phrase>`**: Adds another payment wallet. The phrase is deleted immediately and is never displayed again.
 *   **/wallets**: Lists wallet IDs and shows which one is the default for newly created products.
 *   **/usewallet `<WalletID>`**: Sets the default wallet for newly created products.
-*   **/assignwallet `<ProductID>` `<WalletID>`**: Assigns a wallet to a product. Existing pending deposits keep their original address.
+*   **/assignwallet `<ProductID>` `<12-24 word phrase>`**: Adds a separate payment wallet and assigns it to one product. Existing pending deposits keep their original address. Your message is deleted immediately.
 *   **/editshopname `<NewName>`**: Changes your shop name.
 *   **/addproduct `<Price>` `<Product Name>`**: Creates a product bundle and returns a `ProductID`.
 *   **/addlink `<ProductID>` `<Link>`**: Adds a link (e.g., for Dropbox, Telegram) to your product bundle.

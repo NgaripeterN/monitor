@@ -142,9 +142,9 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📚 <b>AccessBot Help Center</b>\n\n"
         "<b>For Sellers:</b>\n"
         "1. <code>/register &lt;ShopName&gt;</code> - Create your seller account.\n"
-        "2. <code>/addproduct &lt;Price&gt; &lt;Name&gt;</code> - Create a product bundle.\n"
-        "3. <code>/addlink &lt;ProductID&gt; &lt;Link&gt;</code> - Add a link to your product.\n"
-        "4. <code>/setwallet &lt;Phrase&gt;</code> - Set your first payment wallet.\n"
+        "2. <code>/setwallet &lt;Phrase&gt;</code> - Set your first/default payment wallet.\n"
+        "3. <code>/addproduct &lt;Price&gt; &lt;Name&gt;</code> - Create a product bundle.\n"
+        "4. <code>/addlink &lt;ProductID&gt; &lt;Link&gt;</code> - Add a link to your product.\n"
         "5. <code>/myproducts</code> - Get your shareable buyer links and manage products.\n\n"
         "<b>Additional Commands:</b>\n"
         "• <code>/editshopname &lt;NewName&gt;</code> - Change your shop's display name.\n"
@@ -153,9 +153,9 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• <code>/addwallet &lt;Phrase&gt;</code> - Add another payment wallet.\n"
         "• <code>/wallets</code> - List your wallet IDs and default wallet.\n"
         "• <code>/usewallet &lt;WalletID&gt;</code> - Use a wallet by default for new products.\n"
-        "• <code>/assignwallet &lt;ProductID&gt; &lt;WalletID&gt;</code> - Set a product's payment wallet.\n"
+        "• <code>/assignwallet &lt;ProductID&gt; &lt;Phrase&gt;</code> - Set a separate wallet for one product.\n"
         "• <code>/removelink &lt;LinkID&gt;</code> - Delete a link from a bundle.\n\n"
-        "💡 <i>Tip: For your security, always use a fresh, empty wallet recovery phrase for /setwallet.</i>"
+        "💡 <i>Tip: Always use a fresh, empty wallet recovery phrase for payments.</i>"
     )
     await msg.reply_text(help_text, parse_mode="HTML")
 
@@ -173,9 +173,10 @@ async def register_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await msg.reply_text(
         "✅ Seller account created successfully!\n\n"
-        "<b>Step 1: Create a Product</b>\n"
-        "Use the command: <code>/addproduct &lt;Price&gt; &lt;Name&gt;</code>\n"
-        "Example: <code>/addproduct 19.99 Premium Bundle</code>",
+        "<b>Step 1: Set Your Payment Wallet</b>\n"
+        "Use the command: <code>/setwallet &lt;12 or 24 recovery words&gt;</code>\n\n"
+        "Use a fresh, empty wallet created only for receiving shop payments. "
+        "Your message is deleted immediately after it is processed.",
         parse_mode="HTML"
     )
 
@@ -237,7 +238,7 @@ async def set_wallet_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     assign_unassigned_products_to_wallet(seller_id, wallet_id)
     await msg.reply_text(
         "✅ First wallet set successfully! Existing products without a wallet now use it.\n\n"
-        "Use <code>/myproducts</code> to see your shareable buyer links.",
+        "<b>Next:</b> Create a product with <code>/addproduct &lt;Price&gt; &lt;Name&gt;</code>.",
         parse_mode="HTML"
     )
 
@@ -260,8 +261,7 @@ async def add_wallet_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     wallet_id = add_seller_wallet(context.user_data['seller_id'], mnemonic)
     await msg.reply_text(
         f"✅ Wallet <code>{wallet_id}</code> added. It is not the default; use "
-        f"<code>/usewallet {wallet_id}</code> for new products or "
-        f"<code>/assignwallet &lt;ProductID&gt; {wallet_id}</code> for a specific product.",
+        f"<code>/usewallet {wallet_id}</code> to use it for newly created products.",
         parse_mode="HTML"
     )
 
@@ -300,20 +300,36 @@ async def assign_wallet_command(update: Update, context: ContextTypes.DEFAULT_TY
     msg = update.effective_message
     if not msg:
         return
-    if len(context.args) != 2:
-        return await msg.reply_text("Usage: /assignwallet <ProductID> <WalletID>")
+    if len(context.args) < 2:
+        return await msg.reply_text("Usage: /assignwallet <ProductID> <12 or 24 recovery words>")
     try:
-        product_id, wallet_id = map(int, context.args)
+        product_id = int(context.args[0])
     except ValueError:
-        return await msg.reply_text("❌ Product ID and Wallet ID must be numbers.")
-    if assign_wallet_to_product(product_id, context.user_data['seller_id'], wallet_id):
+        return await msg.reply_text("❌ Product ID must be a number.")
+
+    mnemonic = " ".join(context.args[1:])
+    try:
+        await msg.delete()
+    except TelegramError:
+        pass
+
+    seller_id = context.user_data['seller_id']
+    product = get_product_by_id(product_id)
+    if not product or product[1] != seller_id:
+        return await msg.reply_text("❌ Product not found or you are not the owner.")
+
+    if len(context.args[1:]) not in [12, 24] or not Bip39MnemonicValidator().IsValid(mnemonic):
+        return await msg.reply_text("❌ Invalid recovery phrase. Your message was deleted for security.")
+
+    wallet_id = add_seller_wallet(seller_id, mnemonic)
+    if assign_wallet_to_product(product_id, seller_id, wallet_id):
         await msg.reply_text(
-            f"✅ New payments for product <code>{product_id}</code> will use wallet <code>{wallet_id}</code>. "
+            f"✅ A separate payment wallet has been assigned to product <code>{product_id}</code>. "
             "Existing pending deposits keep their original address.",
             parse_mode="HTML"
         )
     else:
-        await msg.reply_text("❌ Product or wallet not found, or you are not the owner.")
+        await msg.reply_text("❌ The product could not be updated. Please try again.")
 
 @is_seller
 async def add_product_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
